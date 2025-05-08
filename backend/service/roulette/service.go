@@ -6,6 +6,11 @@ import (
 	"github.com/jungtechou/valomap/service"
 )
 
+// MapFilter defines the filtering options for map selection
+type MapFilter struct {
+	StandardOnly bool
+}
+
 var (
 	_ Service = (*RouletteService)(nil)
 )
@@ -13,5 +18,6 @@ var (
 type Service interface {
 	service.Service
 
-	Roulette(ctx ctx.CTX) (*domain.Map, error)
+	// GetRandomMap returns a random map filtered by the provided options
+	GetRandomMap(ctx ctx.CTX, filter MapFilter) (*domain.Map, error)
 }

@@ -13,5 +13,6 @@ var (
 type Handler interface {
 	handler.Handler
 
-	GetRouletteMap(c *gin.Context)
+	// GetMap returns a random map, optionally filtered to standard maps only
+	GetMap(c *gin.Context)
 }

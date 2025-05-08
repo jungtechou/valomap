@@ -18,9 +18,11 @@ const (
 )
 
 var (
-	ErrEmptyMapList = errors.New("received empty map list from API")
-	ErrAPIRequest   = errors.New("failed to make API request")
-	ErrAPIResponse  = errors.New("received invalid API response")
+	ErrEmptyMapList   = errors.New("received empty map list from API")
+	ErrAPIRequest     = errors.New("failed to make API request")
+	ErrAPIResponse    = errors.New("received invalid API response")
+	ErrNoStandardMaps = errors.New("no standard maps found")
+	ErrNoFilteredMaps = errors.New("no maps found matching filter criteria")
 )
 
 type RouletteService struct {
@@ -37,7 +39,8 @@ func NewService(c *http.Client) Service {
 	}
 }
 
-func (s *RouletteService) Roulette(ctx ctx.CTX) (*domain.Map, error) {
+// fetchMaps fetches all maps from the API
+func (s *RouletteService) fetchMaps(ctx ctx.CTX) ([]domain.Map, error) {
 	// Make the API request
 	resp, err := s.client.Get(apiURL)
 	if err != nil {
@@ -77,7 +80,56 @@ func (s *RouletteService) Roulette(ctx ctx.CTX) (*domain.Map, error) {
 	// Log successful fetch
 	ctx.FieldLogger.WithField("map_count", len(maps)).Info("Successfully fetched maps from API")
 
-	// Select a random map using thread-safe RNG
-	selectedMap := maps[s.rng.Intn(len(maps))]
+	return maps, nil
+}
+
+// filterMaps applies the provided filters to the map list
+func (s *RouletteService) filterMaps(ctx ctx.CTX, maps []domain.Map, filter MapFilter) ([]domain.Map, error) {
+	if !filter.StandardOnly {
+		return maps, nil
+	}
+
+	var filteredMaps []domain.Map
+	for _, m := range maps {
+		if m.TacticalDescription != "" {
+			filteredMaps = append(filteredMaps, m)
+		}
+	}
+
+	if len(filteredMaps) == 0 {
+		ctx.FieldLogger.WithField("filter", "standard").Error("No maps found matching filter criteria")
+		return nil, ErrNoStandardMaps
+	}
+
+	ctx.FieldLogger.WithFields(logrus.Fields{
+		"filter":         "standard",
+		"filtered_count": len(filteredMaps),
+		"total_count":    len(maps),
+	}).Info("Applied map filters")
+
+	return filteredMaps, nil
+}
+
+// GetRandomMap returns a random map filtered by the provided options
+func (s *RouletteService) GetRandomMap(ctx ctx.CTX, filter MapFilter) (*domain.Map, error) {
+	// Log filter options
+	ctx.FieldLogger.WithFields(logrus.Fields{
+		"standard_only": filter.StandardOnly,
+	}).Debug("Map filter options")
+
+	// Fetch all maps
+	maps, err := s.fetchMaps(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply filters
+	filteredMaps, err := s.filterMaps(ctx, maps, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	// Select a random map from the filtered list
+	selectedMap := filteredMaps[s.rng.Intn(len(filteredMaps))]
 	return &selectedMap, nil
 }
