@@ -22,6 +22,9 @@ services:
       - "traefik.http.routers.valomap-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.valomap-api.loadbalancer.server.port=3000"
       - "traefik.docker.network=web"
+      - "traefik.http.middlewares.valomap-api-stripprefix.stripprefix.prefixes=/map"
+      - "traefik.http.middlewares.valomap-api-addprefix.addprefix.prefix=/api/v1/map"
+      - "traefik.http.routers.valomap-api.middlewares=valomap-api-stripprefix,valomap-api-addprefix"
 
   # Frontend service
   frontend:

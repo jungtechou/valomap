@@ -138,10 +138,6 @@ const MapRoulette = () => {
     }
   }, [getRandomMap, standardOnly]);
 
-  const handleReset = useCallback(() => {
-    setSelectedMap(null);
-  }, []);
-
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -209,15 +205,6 @@ const MapRoulette = () => {
           aria-label="Get random map"
         >
           {loading ? 'Selecting...' : 'Random Map'} <FaDice />
-        </Button>
-
-        <Button
-          variant="secondary"
-          onClick={handleReset}
-          disabled={!selectedMap || loading}
-          aria-label="Reset selection"
-        >
-          Reset <FaDiceD6 />
         </Button>
       </ButtonsContainer>
 

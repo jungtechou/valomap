@@ -174,22 +174,6 @@ const MapCard = ({ map }) => {
         />
         <CardContent>
           <MapName>{map.displayName}</MapName>
-
-          {map.tacticalDescription && (
-            <MapDetailSection>
-              <MapDetailHeading>Tactical Overview</MapDetailHeading>
-              <MapDescription>{map.tacticalDescription}</MapDescription>
-            </MapDetailSection>
-          )}
-
-          {map.narrativeDescription && (
-            <MapDetailSection>
-              <MapDetailHeading>Lore</MapDetailHeading>
-              <MapDescription>{map.narrativeDescription}</MapDescription>
-            </MapDetailSection>
-          )}
-
-          {map.coordinates && <MapCoordinates>{map.coordinates}</MapCoordinates>}
         </CardContent>
       </CardContainer>
     </AnimatePresence>
