@@ -24,8 +24,8 @@ docker compose logs --tail=100
 
 # Print deployment completion message
 echo "Deployment completed successfully!"
-echo "The API is now accessible at https://workspace.chat-mail.uno"
-echo "The Traefik dashboard is available at https://traefik.workspace.chat-mail.uno"
+echo "The API is now accessible at https://valomap.com"
+echo "The Traefik dashboard is available at https://traefik.valomap.com"
 
 # Show container status
 docker compose ps

@@ -1,27 +1,47 @@
 services:
   # API service
-  api:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: valorant-map-picker
+    container_name: valorant-map-picker-backend
     restart: unless-stopped
     environment:
       - VALOMAP_SERVER_PORT=3000
       - VALOMAP_LOGGING_LEVEL=info
       - VALOMAP_LOGGING_FORMAT=json
-      - VALOMAP_SECURITY_ALLOWED_ORIGINS=https://workspace.chat-mail.uno
+      - VALOMAP_SECURITY_ALLOWED_ORIGINS=https://valomap.com
     volumes:
       - ./backend/config/config.yaml:/etc/valorant-map-picker/config.yaml:ro
     networks:
       - web
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.valomap.rule=Host(`workspace.chat-mail.uno`)"
-      - "traefik.http.routers.valomap.entrypoints=websecure"
-      - "traefik.http.routers.valomap.tls.certresolver=letsencrypt"
-      - "traefik.http.services.valomap.loadbalancer.server.port=3000"
+      - "traefik.http.routers.valomap-api.rule=Host(`valomap.com`) && PathPrefix(`/map`)"
+      - "traefik.http.routers.valomap-api.entrypoints=websecure"
+      - "traefik.http.routers.valomap-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.valomap-api.loadbalancer.server.port=3000"
       - "traefik.docker.network=web"
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: valorant-map-picker-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.valomap-frontend.rule=Host(`valomap.com`)"
+      - "traefik.http.routers.valomap-frontend.entrypoints=websecure"
+      - "traefik.http.routers.valomap-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.valomap-frontend.loadbalancer.server.port=80"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.valomap-frontend.priority=1"
 
   # Traefik reverse proxy with Let's Encrypt
   traefik:
@@ -39,7 +59,7 @@ services:
       - web
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.workspace.chat-mail.uno`)"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.valomap.com`)"
       - "traefik.http.routers.traefik.service=api@internal"
       - "traefik.http.routers.traefik.entrypoints=websecure"
       - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"

@@ -5,7 +5,7 @@ This guide will help you deploy the Valorant Map Picker API with HTTPS support t
 ## Prerequisites
 
 - A server with Docker and Docker Compose installed
-- A domain name pointed to your server (in this case, workspace.chat-mail.uno)
+- A domain name pointed to your server (in this case, valomap.com)
 - Basic familiarity with the terminal and Docker
 
 ## Deployment Steps
@@ -45,8 +45,8 @@ Verify the configuration in the following files:
 You may want to adjust the domain names in the `docker-compose.yml` file:
 
 ```yaml
-- "traefik.http.routers.valomap.rule=Host(`workspace.chat-mail.uno`)"
-- "traefik.http.routers.traefik.rule=Host(`traefik.workspace.chat-mail.uno`)"
+- "traefik.http.routers.valomap.rule=Host(`valomap.com`)"
+- "traefik.http.routers.traefik.rule=Host(`traefik.valomap.com`)"
 ```
 
 ### 4. Deploy the Application
@@ -69,8 +69,8 @@ This will:
 
 Once deployment is complete, you should be able to access:
 
-- The API at: https://workspace.chat-mail.uno
-- The Traefik dashboard at: https://traefik.workspace.chat-mail.uno (password protected)
+- The API at: https://valomap.com
+- The Traefik dashboard at: https://traefik.valomap.com (password protected)
 
 ### 6. Troubleshooting
 
