@@ -122,7 +122,7 @@ const ErrorMessage = styled(motion.div)`
 const MapRoulette = () => {
   const [selectedMap, setSelectedMap] = useState(null);
   const [standardOnly, setStandardOnly] = useState(false);
-  const { loading, error, getRandomMap } = useValorantAPI();
+  const { loading, error, getRandomMap, clearCache } = useValorantAPI();
 
   const handleToggleStandard = useCallback(() => {
     setStandardOnly(prev => !prev);
@@ -130,13 +130,15 @@ const MapRoulette = () => {
 
   const handleRandomMap = useCallback(async () => {
     try {
+      // Clear the cache first to ensure we get a new random map
+      clearCache();
       const map = await getRandomMap(standardOnly);
       setSelectedMap(map);
     } catch (error) {
       // Error is handled in the useValorantAPI hook
       console.error('Failed to get random map:', error);
     }
-  }, [getRandomMap, standardOnly]);
+  }, [getRandomMap, clearCache, standardOnly]);
 
   // Animation variants
   const containerVariants = {
