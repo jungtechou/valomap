@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaDice, FaDiceD6 } from 'react-icons/fa';
+import { FaDice, FaDiceD6, FaBan } from 'react-icons/fa';
 import { useValorantAPI } from '../hooks/useValorantAPI';
 import MapCard from './MapCard';
 import Button from './Button';
+import MapBanSelection from './MapBanSelection';
 
 const RouletteContainer = styled.div`
   display: flex;
@@ -119,26 +120,78 @@ const ErrorMessage = styled(motion.div)`
   justify-content: center;
 `;
 
+const BanToggle = styled.button`
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--valorant-light-gray);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  margin-top: 1rem;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--valorant-white);
+  }
+
+  svg {
+    color: var(--valorant-red);
+    margin-right: 0.5rem;
+  }
+`;
+
 const MapRoulette = () => {
   const [selectedMap, setSelectedMap] = useState(null);
   const [standardOnly, setStandardOnly] = useState(false);
+  const [bannedMaps, setBannedMaps] = useState([]);
+  const [showBanSelection, setShowBanSelection] = useState(false);
   const { loading, error, getRandomMap, clearCache } = useValorantAPI();
+
+  // Load banned maps from localStorage on component mount
+  useEffect(() => {
+    const savedBannedMaps = localStorage.getItem('bannedMaps');
+    if (savedBannedMaps) {
+      try {
+        const parsedBannedMaps = JSON.parse(savedBannedMaps);
+        if (Array.isArray(parsedBannedMaps)) {
+          setBannedMaps(parsedBannedMaps);
+        }
+      } catch (err) {
+        console.error('Failed to parse saved banned maps:', err);
+      }
+    }
+  }, []);
+
+  // Save banned maps to localStorage when they change
+  useEffect(() => {
+    localStorage.setItem('bannedMaps', JSON.stringify(bannedMaps));
+  }, [bannedMaps]);
 
   const handleToggleStandard = useCallback(() => {
     setStandardOnly(prev => !prev);
+  }, []);
+
+  const handleToggleBanSelection = useCallback(() => {
+    setShowBanSelection(prev => !prev);
+  }, []);
+
+  const handleBannedMapsChange = useCallback((newBannedMaps) => {
+    setBannedMaps(newBannedMaps);
   }, []);
 
   const handleRandomMap = useCallback(async () => {
     try {
       // Clear the cache first to ensure we get a new random map
       clearCache();
-      const map = await getRandomMap(standardOnly);
+      const map = await getRandomMap(standardOnly, bannedMaps);
       setSelectedMap(map);
     } catch (error) {
       // Error is handled in the useValorantAPI hook
       console.error('Failed to get random map:', error);
     }
-  }, [getRandomMap, clearCache, standardOnly]);
+  }, [getRandomMap, clearCache, standardOnly, bannedMaps]);
 
   // Animation variants
   const containerVariants = {
@@ -169,7 +222,7 @@ const MapRoulette = () => {
 
       <Subtitle variants={itemVariants}>
         Randomly select a map for your next Valorant match.
-        Use the toggle to filter only standard maps.
+        Use the toggle to filter only standard maps or ban specific maps.
       </Subtitle>
 
       <FilterToggle as={motion.div} variants={itemVariants}>
@@ -209,6 +262,25 @@ const MapRoulette = () => {
           {loading ? 'Selecting...' : 'Random Map'} <FaDice />
         </Button>
       </ButtonsContainer>
+
+      <BanToggle
+        onClick={handleToggleBanSelection}
+        aria-expanded={showBanSelection}
+        aria-controls="map-ban-selection"
+      >
+        <FaBan /> {showBanSelection ? 'Hide' : 'Show'} map ban selection ({bannedMaps.length} banned)
+      </BanToggle>
+
+      <AnimatePresence>
+        {showBanSelection && (
+          <div id="map-ban-selection">
+            <MapBanSelection
+              bannedMaps={bannedMaps}
+              onBannedMapsChange={handleBannedMapsChange}
+            />
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {loading && (

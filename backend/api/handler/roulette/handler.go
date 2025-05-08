@@ -15,4 +15,7 @@ type Handler interface {
 
 	// GetMap returns a random map, optionally filtered to standard maps only
 	GetMap(c *gin.Context)
+
+	// GetAllMaps returns a list of all available maps
+	GetAllMaps(c *gin.Context)
 }

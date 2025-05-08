@@ -60,10 +60,31 @@ export const useValorantAPI = () => {
     }
   }, []);
 
-  // Get a random map with optional standard filter
-  const getRandomMap = useCallback(async (standardOnly = false) => {
-    const endpoint = standardOnly ? '/roulette?standard=true' : '/roulette';
-    const cacheKey = standardOnly ? 'standard' : 'all';
+  // Get a random map with optional standard filter and banned maps
+  const getRandomMap = useCallback(async (standardOnly = false, bannedMaps = []) => {
+    // Start building the endpoint with query parameters
+    let endpoint = '/roulette';
+    let params = [];
+
+    // Add standard filter if needed
+    if (standardOnly) {
+      params.push('standard=true');
+    }
+
+    // Add banned maps if any
+    if (bannedMaps.length > 0) {
+      bannedMaps.forEach(mapId => {
+        params.push(`banned=${encodeURIComponent(mapId)}`);
+      });
+    }
+
+    // Construct the final endpoint with query parameters
+    if (params.length > 0) {
+      endpoint += '?' + params.join('&');
+    }
+
+    // Generate a unique cache key based on the parameters
+    const cacheKey = `${standardOnly ? 'standard' : 'all'}_${bannedMaps.join('_')}`;
 
     return makeRequest(endpoint, cacheKey);
   }, [makeRequest]);

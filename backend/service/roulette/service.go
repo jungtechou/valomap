@@ -9,6 +9,7 @@ import (
 // MapFilter defines the filtering options for map selection
 type MapFilter struct {
 	StandardOnly bool
+	BannedMapIDs []string
 }
 
 var (
@@ -20,4 +21,7 @@ type Service interface {
 
 	// GetRandomMap returns a random map filtered by the provided options
 	GetRandomMap(ctx ctx.CTX, filter MapFilter) (*domain.Map, error)
+
+	// GetAllMaps returns all available maps
+	GetAllMaps(ctx ctx.CTX) ([]domain.Map, error)
 }

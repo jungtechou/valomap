@@ -85,26 +85,57 @@ func (s *RouletteService) fetchMaps(ctx ctx.CTX) ([]domain.Map, error) {
 
 // filterMaps applies the provided filters to the map list
 func (s *RouletteService) filterMaps(ctx ctx.CTX, maps []domain.Map, filter MapFilter) ([]domain.Map, error) {
-	if !filter.StandardOnly {
-		return maps, nil
+	var filteredMaps []domain.Map
+
+	// Create a set of banned map IDs for faster lookup
+	bannedMaps := make(map[string]bool)
+	for _, id := range filter.BannedMapIDs {
+		bannedMaps[id] = true
 	}
 
-	var filteredMaps []domain.Map
+	// First filter out banned maps
 	for _, m := range maps {
-		if m.TacticalDescription != "" {
+		if !bannedMaps[m.UUID] {
 			filteredMaps = append(filteredMaps, m)
 		}
 	}
 
+	// No maps left after removing banned maps
 	if len(filteredMaps) == 0 {
-		ctx.FieldLogger.WithField("filter", "standard").Error("No maps found matching filter criteria")
-		return nil, ErrNoStandardMaps
+		ctx.FieldLogger.WithFields(logrus.Fields{
+			"filter": "banned maps",
+			"banned_count": len(filter.BannedMapIDs),
+		}).Error("All maps have been banned")
+		return nil, ErrNoFilteredMaps
+	}
+
+	// Then apply standard filter if needed
+	if filter.StandardOnly {
+		var standardMaps []domain.Map
+
+		for _, m := range filteredMaps {
+			if m.TacticalDescription != "" {
+				standardMaps = append(standardMaps, m)
+			}
+		}
+
+		if len(standardMaps) == 0 {
+			ctx.FieldLogger.WithField("filter", "standard").Error("No maps found matching filter criteria")
+			return nil, ErrNoStandardMaps
+		}
+
+		ctx.FieldLogger.WithFields(logrus.Fields{
+			"filter":         "standard",
+			"filtered_count": len(standardMaps),
+			"total_count":    len(filteredMaps),
+		}).Info("Applied standard map filter")
+
+		return standardMaps, nil
 	}
 
 	ctx.FieldLogger.WithFields(logrus.Fields{
-		"filter":         "standard",
-		"filtered_count": len(filteredMaps),
-		"total_count":    len(maps),
+		"banned_maps_count": len(filter.BannedMapIDs),
+		"remaining_maps":   len(filteredMaps),
 	}).Info("Applied map filters")
 
 	return filteredMaps, nil
@@ -132,4 +163,21 @@ func (s *RouletteService) GetRandomMap(ctx ctx.CTX, filter MapFilter) (*domain.M
 	// Select a random map from the filtered list
 	selectedMap := filteredMaps[s.rng.Intn(len(filteredMaps))]
 	return &selectedMap, nil
+}
+
+// GetAllMaps returns all available maps
+func (s *RouletteService) GetAllMaps(ctx ctx.CTX) ([]domain.Map, error) {
+	// Log the request
+	ctx.FieldLogger.Info("Fetching all maps")
+
+	// Fetch all maps from the API
+	maps, err := s.fetchMaps(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the result
+	ctx.FieldLogger.WithField("map_count", len(maps)).Info("Successfully fetched all maps")
+
+	return maps, nil
 }
