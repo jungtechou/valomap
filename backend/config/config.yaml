@@ -1,0 +1,38 @@
+# Server Configuration
+server:
+  port: 3000
+  read_timeout: 10s
+  write_timeout: 10s
+  shutdown_timeout: 5s
+
+# Logging Configuration
+logging:
+  level: info
+  format: text
+  report_caller: false
+
+# API Configuration
+api:
+  base_path: /api
+  version: v1
+  map_api_url: https://valorant-api.com/v1/maps
+  request_timeout: 5s
+
+# Redis Configuration
+redis:
+  enabled: false
+  address: localhost:6379
+  password: ""
+  db: 0
+
+# Security Configuration
+security:
+  allowed_origins:
+    - "*"
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+  max_body_size: 8388608 # 8MB

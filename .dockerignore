@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+.github
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE files
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+bin/
+dist/
+vendor/
+*/tmp/
+
+# Environment files
+.env
+.env.*
+
+# Go test files
+*.test
+*.prof
+coverage.out
+
+# Log files
+logs/
+*.log
+
+# Traefik files
+traefik/
+acme.json
+
+# Documentation
+README.md
+LICENSE
+docs/
+examples/

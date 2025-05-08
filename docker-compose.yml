@@ -1,0 +1,51 @@
+services:
+  # API service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: valorant-map-picker
+    restart: unless-stopped
+    environment:
+      - VALOMAP_SERVER_PORT=3000
+      - VALOMAP_LOGGING_LEVEL=info
+      - VALOMAP_LOGGING_FORMAT=json
+      - VALOMAP_SECURITY_ALLOWED_ORIGINS=https://workspace.chat-mail.uno
+    volumes:
+      - ./backend/config/config.yaml:/etc/valorant-map-picker/config.yaml:ro
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.valomap.rule=Host(`workspace.chat-mail.uno`)"
+      - "traefik.http.routers.valomap.entrypoints=websecure"
+      - "traefik.http.routers.valomap.tls.certresolver=letsencrypt"
+      - "traefik.http.services.valomap.loadbalancer.server.port=3000"
+      - "traefik.docker.network=web"
+
+  # Traefik reverse proxy with Let's Encrypt
+  traefik:
+    image: traefik:v2.9
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/acme.json:/acme.json
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.workspace.chat-mail.uno`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=admin:$$apr1$$70hN10X7$$3QbzMaVnA3pagO1OJl1o90"  # Replace with your hashed password
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+
+networks:
+  web:
+    external: true
