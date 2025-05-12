@@ -1,6 +1,7 @@
 import React from "react";
 import styled from "styled-components";
 import { motion, AnimatePresence } from "framer-motion";
+import { ensureValidImageUrl } from "../utils/imageUtils";
 
 const CardContainer = styled(motion.div)`
   width: 100%;
@@ -154,7 +155,10 @@ const MapCard = ({ map }) => {
   }
 
   // Fallback image if splash or displayIcon is not available
-  const mapImage = map.splash || map.displayIcon || "https://via.placeholder.com/700x300?text=Map+Image+Unavailable";
+  let mapImage = map.splash || map.displayIcon || "https://via.placeholder.com/700x300?text=Map+Image+Unavailable";
+
+  // Ensure the image URL is valid
+  mapImage = ensureValidImageUrl(mapImage);
 
   return (
     <AnimatePresence mode="wait">

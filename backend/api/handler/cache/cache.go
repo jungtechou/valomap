@@ -21,7 +21,7 @@ type CacheHandler struct {
 // NewHandler creates a new cache handler
 func NewHandler(cacheService cache.ImageCache) Handler {
 	return &CacheHandler{
-		imageCachePath: "./images-cache", // Must match the path in the cache service
+		imageCachePath: "/home/appuser/images-cache", // Must match the path in the cache service
 		cacheService:   cacheService,
 	}
 }

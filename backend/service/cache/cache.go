@@ -48,7 +48,7 @@ type downloadTask struct {
 // NewImageCache creates a new image cache service
 func NewImageCache(cfg *config.Config, client *http.Client) (ImageCache, error) {
 	// Default cache path is ./images-cache relative to the server
-	cachePath := "./images-cache"
+	cachePath := "/home/appuser/images-cache"
 
 	// Create cache directory if it doesn't exist
 	if err := os.MkdirAll(cachePath, 0755); err != nil {
@@ -239,7 +239,7 @@ func (c *imageCache) CacheMapImages(ctx ctx.CTX, maps []domain.Map) ([]domain.Ma
 
 	for i := range maps {
 		mapPtr := &maps[i]
-		if mapPtr == nil || mapPtr.UUID == "" {
+		if mapPtr.UUID == "" {
 			ctx.FieldLogger.Warn("Found invalid map entry, skipping")
 			continue
 		}

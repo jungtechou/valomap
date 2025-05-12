@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import axios from "axios";
+import debounce from "lodash.debounce";
 
 const API_BASE_URL = "/map";
 
@@ -18,12 +19,14 @@ export const useValorantAPI = () => {
   const [error, setError] = useState(null);
 
   // Use a ref for caching to persist across renders
-  const cache = useRef({
-    standard: null,
-    all: null
-  });
+  const cache = useRef({});
 
-  // Create a single function to handle API requests
+  // Function to generate a cache key
+  const generateCacheKey = useCallback((standardOnly, bannedMaps) => {
+    return `${standardOnly ? 'standard' : 'all'}_${bannedMaps.sort().join('_')}`;
+  }, []);
+
+  // Create a single function to handle API requests with proper error handling
   const makeRequest = useCallback(async (url, cacheKey) => {
     setLoading(true);
     setError(null);
@@ -31,16 +34,21 @@ export const useValorantAPI = () => {
     try {
       // Check cache first
       if (cache.current[cacheKey]) {
-        setLoading(false);
+        // Use setTimeout to prevent blocking the main thread
+        setTimeout(() => {
+          setLoading(false);
+        }, 0);
         return cache.current[cacheKey];
       }
 
       const response = await apiClient.get(url);
 
-      // Update cache
-      cache.current[cacheKey] = response.data;
+      // Update cache in a non-blocking way
+      setTimeout(() => {
+        cache.current[cacheKey] = response.data;
+        setLoading(false);
+      }, 0);
 
-      setLoading(false);
       return response.data;
     } catch (err) {
       // Detailed error handling
@@ -61,46 +69,62 @@ export const useValorantAPI = () => {
   }, []);
 
   // Get a random map with optional standard filter and banned maps
-  const getRandomMap = useCallback(async (standardOnly = false, bannedMaps = []) => {
+  const getRandomMapInternal = useCallback(async (standardOnly = false, bannedMaps = []) => {
     // Start building the endpoint with query parameters
     let endpoint = '/roulette';
-    let params = [];
+    const params = new URLSearchParams();
 
     // Add standard filter if needed
     if (standardOnly) {
-      params.push('standard=true');
+      params.append('standard', 'true');
     }
 
-    // Add banned maps if any
+    // Add banned maps if any - more efficient than building strings manually
     if (bannedMaps.length > 0) {
       bannedMaps.forEach(mapId => {
-        params.push(`banned=${encodeURIComponent(mapId)}`);
+        params.append('banned', mapId);
       });
     }
 
     // Construct the final endpoint with query parameters
-    if (params.length > 0) {
-      endpoint += '?' + params.join('&');
+    if (params.toString()) {
+      endpoint += '?' + params.toString();
     }
 
     // Generate a unique cache key based on the parameters
-    const cacheKey = `${standardOnly ? 'standard' : 'all'}_${bannedMaps.join('_')}`;
+    const cacheKey = generateCacheKey(standardOnly, bannedMaps);
 
     return makeRequest(endpoint, cacheKey);
-  }, [makeRequest]);
+  }, [makeRequest, generateCacheKey]);
+
+  // Create a debounced version of the function to prevent too many requests when rapidly toggling maps
+  const getRandomMap = useMemo(() => {
+    const debouncedFn = debounce(getRandomMapInternal, 100, { leading: true, trailing: false });
+
+    // Wrap in another function to preserve the promise interface
+    return async (standardOnly = false, bannedMaps = []) => {
+      return debouncedFn(standardOnly, bannedMaps);
+    };
+  }, [getRandomMapInternal]);
 
   // Clear cached data - useful when implementing manual refresh
   const clearCache = useCallback(() => {
-    cache.current = {
-      standard: null,
-      all: null
-    };
+    cache.current = {};
   }, []);
+
+  // Selectively clear cache for specific params
+  const clearCacheForParams = useCallback((standardOnly, bannedMaps) => {
+    const cacheKey = generateCacheKey(standardOnly, bannedMaps);
+    if (cache.current[cacheKey]) {
+      delete cache.current[cacheKey];
+    }
+  }, [generateCacheKey]);
 
   return {
     loading,
     error,
     getRandomMap,
-    clearCache
+    clearCache,
+    clearCacheForParams
   };
 };

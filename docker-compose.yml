@@ -13,6 +13,7 @@ services:
       - VALOMAP_SECURITY_ALLOWED_ORIGINS=https://valomap.com
     volumes:
       - ./backend/config/config.yaml:/etc/valorant-map-picker/config.yaml:ro
+      - ./images-cache:/home/appuser/images-cache
     networks:
       - web
     labels:
@@ -25,6 +26,11 @@ services:
       - "traefik.http.middlewares.valomap-api-stripprefix.stripprefix.prefixes=/map"
       - "traefik.http.middlewares.valomap-api-addprefix.addprefix.prefix=/api/v1/map"
       - "traefik.http.routers.valomap-api.middlewares=valomap-api-stripprefix,valomap-api-addprefix"
+      - "traefik.http.routers.valomap-cache.rule=Host(`valomap.com`) && PathPrefix(`/api/cache`)"
+      - "traefik.http.routers.valomap-cache.entrypoints=websecure"
+      - "traefik.http.routers.valomap-cache.tls.certresolver=letsencrypt"
+      - "traefik.http.services.valomap-cache.loadbalancer.server.port=3000"
+      - "traefik.http.routers.valomap-cache.priority=10"
 
   # Frontend service
   frontend:

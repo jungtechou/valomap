@@ -1,11 +1,11 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaDice, FaDiceD6, FaBan } from 'react-icons/fa';
 import { useValorantAPI } from '../hooks/useValorantAPI';
 import MapCard from './MapCard';
 import Button from './Button';
-import MapBanSelection from './MapBanSelection';
+import { debounce } from 'lodash';
 
 const RouletteContainer = styled.div`
   display: flex;
@@ -131,6 +131,7 @@ const BanToggle = styled.button`
   padding: 0.5rem;
   margin-top: 1rem;
   transition: color 0.2s ease;
+  will-change: color;
 
   &:hover {
     color: var(--valorant-white);
@@ -142,12 +143,20 @@ const BanToggle = styled.button`
   }
 `;
 
+// Lazy-loaded MapBanSelection component
+const LazyMapBanSelection = React.lazy(() =>
+  import('./MapBanSelection')
+);
+
 const MapRoulette = () => {
   const [selectedMap, setSelectedMap] = useState(null);
   const [standardOnly, setStandardOnly] = useState(false);
   const [bannedMaps, setBannedMaps] = useState([]);
   const [showBanSelection, setShowBanSelection] = useState(false);
-  const { loading, error, getRandomMap, clearCache } = useValorantAPI();
+  const { loading, error, getRandomMap, clearCache, clearCacheForParams } = useValorantAPI();
+
+  // Using a ref to avoid unnecessary re-renders when just changing visibility
+  const banSelectionRef = useRef(null);
 
   // Load banned maps from localStorage on component mount
   useEffect(() => {
@@ -164,10 +173,17 @@ const MapRoulette = () => {
     }
   }, []);
 
-  // Save banned maps to localStorage when they change
+  // Save banned maps to localStorage when they change - using a debounced save
+  const debouncedSave = useRef(
+    debounce((maps) => {
+      localStorage.setItem('bannedMaps', JSON.stringify(maps));
+    }, 300)
+  ).current;
+
   useEffect(() => {
-    localStorage.setItem('bannedMaps', JSON.stringify(bannedMaps));
-  }, [bannedMaps]);
+    debouncedSave(bannedMaps);
+    return () => debouncedSave.cancel();
+  }, [bannedMaps, debouncedSave]);
 
   const handleToggleStandard = useCallback(() => {
     setStandardOnly(prev => !prev);
@@ -178,8 +194,10 @@ const MapRoulette = () => {
   }, []);
 
   const handleBannedMapsChange = useCallback((newBannedMaps) => {
+    // Clear the specific cache for these params before setting the new banned maps
+    clearCacheForParams(standardOnly, newBannedMaps);
     setBannedMaps(newBannedMaps);
-  }, []);
+  }, [standardOnly, clearCacheForParams]);
 
   const handleRandomMap = useCallback(async () => {
     try {
@@ -208,6 +226,15 @@ const MapRoulette = () => {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 }
   };
+
+  // Memoized count display to prevent unnecessary re-renders
+  const bannedCountDisplay = useMemo(() => {
+    return (
+      <>
+        <FaBan /> {showBanSelection ? 'Hide' : 'Show'} map ban selection ({bannedMaps.length} banned)
+      </>
+    );
+  }, [showBanSelection, bannedMaps.length]);
 
   return (
     <RouletteContainer
@@ -268,19 +295,21 @@ const MapRoulette = () => {
         aria-expanded={showBanSelection}
         aria-controls="map-ban-selection"
       >
-        <FaBan /> {showBanSelection ? 'Hide' : 'Show'} map ban selection ({bannedMaps.length} banned)
+        {bannedCountDisplay}
       </BanToggle>
 
-      <AnimatePresence>
-        {showBanSelection && (
-          <div id="map-ban-selection">
-            <MapBanSelection
-              bannedMaps={bannedMaps}
-              onBannedMapsChange={handleBannedMapsChange}
-            />
-          </div>
-        )}
-      </AnimatePresence>
+      <div ref={banSelectionRef} id="map-ban-selection">
+        <AnimatePresence>
+          {showBanSelection && (
+            <React.Suspense fallback={<LoadingIndicator>Loading ban selection...</LoadingIndicator>}>
+              <LazyMapBanSelection
+                bannedMaps={bannedMaps}
+                onBannedMapsChange={handleBannedMapsChange}
+              />
+            </React.Suspense>
+          )}
+        </AnimatePresence>
+      </div>
 
       <AnimatePresence>
         {loading && (

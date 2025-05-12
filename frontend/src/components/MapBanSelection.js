@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaBan, FaTimes } from 'react-icons/fa';
 import axios from 'axios';
+import { useInView } from 'react-intersection-observer';
+import { ensureValidImageUrl } from '../utils/imageUtils';
 
 const BanSelectionContainer = styled(motion.div)`
   width: 100%;
@@ -40,9 +42,10 @@ const MapItem = styled.div`
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   background-color: rgba(15, 25, 35, 0.6);
   border: 2px solid ${props => props.isBanned ? 'var(--valorant-red)' : 'rgba(255, 255, 255, 0.1)'};
+  will-change: transform, box-shadow, border-color;
 
   &:hover {
     transform: translateY(-3px);
@@ -54,7 +57,8 @@ const MapItem = styled.div`
 const MapImage = styled.div`
   width: 100%;
   height: 80px;
-  background-image: url(${props => props.src});
+  background-image: ${props => props.loaded ? `url(${props.src})` : 'none'};
+  background-color: rgba(15, 25, 35, 0.8);
   background-size: cover;
   background-position: center;
   position: relative;
@@ -93,6 +97,7 @@ const BanOverlay = styled.div`
   z-index: 2;
   opacity: ${props => props.visible ? 1 : 0};
   transition: opacity 0.2s ease;
+  pointer-events: none;
 `;
 
 const BannedMapsCount = styled.div`
@@ -123,31 +128,76 @@ const ErrorContainer = styled.div`
   margin-top: 1rem;
 `;
 
+// Memoized map item component to prevent unnecessary re-renders
+const MapItemMemo = React.memo(({ map, isBanned, toggleMapBan }) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [ref, inView] = useInView({
+    triggerOnce: true,
+    rootMargin: '200px 0px',
+  });
+
+  // Process the image URLs
+  const imageUrl = ensureValidImageUrl(map.splash || map.displayIcon);
+
+  // Preload image when component comes into view
+  useEffect(() => {
+    if (inView && !imageLoaded && imageUrl) {
+      const img = new Image();
+      img.src = imageUrl;
+      img.onload = () => setImageLoaded(true);
+    }
+  }, [inView, imageLoaded, imageUrl]);
+
+  return (
+    <MapItem
+      ref={ref}
+      isBanned={isBanned}
+      onClick={() => toggleMapBan(map.uuid)}
+      role="checkbox"
+      aria-checked={isBanned}
+      aria-label={`${map.displayName} ${isBanned ? 'banned' : 'not banned'}`}
+    >
+      <MapImage
+        src={imageUrl}
+        isBanned={isBanned}
+        loaded={inView && imageLoaded}
+        aria-hidden="true"
+      />
+      <MapName isBanned={isBanned}>{map.displayName}</MapName>
+      <BanOverlay visible={isBanned}>
+        <FaBan />
+      </BanOverlay>
+    </MapItem>
+  );
+});
+
 const MapBanSelection = ({ bannedMaps = [], onBannedMapsChange }) => {
   const [maps, setMaps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchMaps = async () => {
-      setLoading(true);
-      setError(null);
+  // Use useCallback to prevent unnecessary rebuilds of this function
+  const fetchMaps = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-      try {
-        const response = await axios.get('/map/all');
-        setMaps(response.data);
-      } catch (err) {
-        console.error('Failed to fetch maps:', err);
-        setError('Failed to load maps. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMaps();
+    try {
+      const response = await axios.get('/map/all');
+      setMaps(response.data);
+    } catch (err) {
+      console.error('Failed to fetch maps:', err);
+      setError('Failed to load maps. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const toggleMapBan = (mapId) => {
+  useEffect(() => {
+    fetchMaps();
+  }, [fetchMaps]);
+
+  // Memoize the toggle function to prevent recreation on each render
+  const toggleMapBan = useCallback((mapId) => {
     let newBannedMaps;
 
     if (bannedMaps.includes(mapId)) {
@@ -161,7 +211,12 @@ const MapBanSelection = ({ bannedMaps = [], onBannedMapsChange }) => {
     if (onBannedMapsChange) {
       onBannedMapsChange(newBannedMaps);
     }
-  };
+  }, [bannedMaps, onBannedMapsChange]);
+
+  // Memoize the banned maps set for faster lookups
+  const bannedMapsSet = useMemo(() => {
+    return new Set(bannedMaps);
+  }, [bannedMaps]);
 
   if (loading) {
     return <LoadingContainer>Loading maps...</LoadingContainer>;
@@ -175,7 +230,7 @@ const MapBanSelection = ({ bannedMaps = [], onBannedMapsChange }) => {
     <BanSelectionContainer
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.3 }}
     >
       <Title>
         <FaBan /> Ban Maps
@@ -183,30 +238,14 @@ const MapBanSelection = ({ bannedMaps = [], onBannedMapsChange }) => {
       <div>Select maps you want to exclude from the roulette:</div>
 
       <MapGrid>
-        {maps.map(map => {
-          const isBanned = bannedMaps.includes(map.uuid);
-
-          return (
-            <MapItem
-              key={map.uuid}
-              isBanned={isBanned}
-              onClick={() => toggleMapBan(map.uuid)}
-              role="checkbox"
-              aria-checked={isBanned}
-              aria-label={`${map.displayName} ${isBanned ? 'banned' : 'not banned'}`}
-            >
-              <MapImage
-                src={map.splash || map.displayIcon}
-                isBanned={isBanned}
-                aria-hidden="true"
-              />
-              <MapName isBanned={isBanned}>{map.displayName}</MapName>
-              <BanOverlay visible={isBanned}>
-                <FaBan />
-              </BanOverlay>
-            </MapItem>
-          );
-        })}
+        {maps.map(map => (
+          <MapItemMemo
+            key={map.uuid}
+            map={map}
+            isBanned={bannedMapsSet.has(map.uuid)}
+            toggleMapBan={toggleMapBan}
+          />
+        ))}
       </MapGrid>
 
       <BannedMapsCount>
