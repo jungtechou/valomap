@@ -28,12 +28,14 @@ func NewHandler(cacheService cache.ImageCache) Handler {
 
 // GetCachedImage godoc
 // @Summary Get a cached image
-// @Description Returns a cached image file
+// @Description Returns a cached image file by filename, serving content directly from the cache directory
 // @Tags cache
+// @Accept json
 // @Produce image/jpeg,image/png,image/gif
-// @Param filename path string true "Image filename"
-// @Success 200 {file} file "Image file"
-// @Failure 404 {object} map[string]string "Image not found"
+// @Param filename path string true "Image filename" example:"map_split.jpg"
+// @Success 200 {file} file "The requested image file"
+// @Failure 400 {object} map[string]string "Bad request - invalid filename"
+// @Failure 404 {object} map[string]string "Image not found in cache"
 // @Router /cache/{filename} [get]
 func (h *CacheHandler) GetCachedImage(c *gin.Context) {
 	logger := logrus.WithField("handler", "GetCachedImage")

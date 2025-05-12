@@ -1,0 +1,208 @@
+basePath: /
+definitions:
+  domain.Callout:
+    properties:
+      location:
+        $ref: '#/definitions/domain.Location'
+      regionName:
+        type: string
+      superRegionName:
+        type: string
+    type: object
+  domain.Location:
+    properties:
+      x:
+        type: number
+      "y":
+        type: number
+    type: object
+  domain.Map:
+    properties:
+      assetPath:
+        type: string
+      callouts:
+        items:
+          $ref: '#/definitions/domain.Callout'
+        type: array
+      coordinates:
+        type: string
+      displayIcon:
+        type: string
+      displayName:
+        type: string
+      listViewIcon:
+        type: string
+      listViewIconTall:
+        type: string
+      mapUrl:
+        type: string
+      narrativeDescription:
+        type: string
+      premierBackgroundImage:
+        type: string
+      splash:
+        type: string
+      stylizedBackgroundImage:
+        type: string
+      tacticalDescription:
+        type: string
+      uuid:
+        type: string
+      xMultiplier:
+        type: number
+      xScalarToAdd:
+        type: number
+      yMultiplier:
+        type: number
+      yScalarToAdd:
+        type: number
+    type: object
+  health.HealthResponse:
+    properties:
+      go_version:
+        type: string
+      memory:
+        $ref: '#/definitions/health.Memory'
+      status:
+        type: string
+      timestamp:
+        type: string
+      uptime:
+        type: string
+      version:
+        type: string
+    type: object
+  health.Memory:
+    properties:
+      alloc:
+        type: integer
+      num_gc:
+        type: integer
+      sys:
+        type: integer
+      total_alloc:
+        type: integer
+    type: object
+  roulette.ResponseError:
+    properties:
+      code:
+        type: integer
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: 提供隨機選圖功能
+  title: Valorant Map API
+  version: "1.0"
+paths:
+  /cache/{filename}:
+    get:
+      description: Returns a cached image file
+      parameters:
+      - description: Image filename
+        in: path
+        name: filename
+        required: true
+        type: string
+      produces:
+      - image/jpeg
+      - image/png
+      - image/gif
+      responses:
+        "200":
+          description: Image file
+          schema:
+            type: file
+        "404":
+          description: Image not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a cached image
+      tags:
+      - cache
+  /health:
+    get:
+      description: Get the API health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/health.HealthResponse'
+      summary: Health Check
+      tags:
+      - system
+  /map/all:
+    get:
+      description: Returns a list of all available Valorant maps
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Map'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/roulette.ResponseError'
+      summary: Get all maps
+      tags:
+      - maps
+  /map/roulette:
+    get:
+      description: Returns a randomly selected Valorant map, with optional filtering
+      parameters:
+      - description: Filter to only standard maps (maps with tactical description)
+        in: query
+        name: standard
+        type: boolean
+      - description: List of map UUIDs to exclude from selection
+        in: query
+        name: banned
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Map'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/roulette.ResponseError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/roulette.ResponseError'
+      summary: Get a random map
+      tags:
+      - maps
+  /ping:
+    get:
+      description: Get a simple pong response
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Simple ping endpoint
+      tags:
+      - system
+schemes:
+- http
+swagger: "2.0"

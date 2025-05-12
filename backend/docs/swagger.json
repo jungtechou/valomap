@@ -1,0 +1,317 @@
+{
+    "schemes": [
+        "http"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "提供隨機選圖功能",
+        "title": "Valorant Map API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/cache/{filename}": {
+            "get": {
+                "description": "Returns a cached image file",
+                "produces": [
+                    "image/jpeg",
+                    "image/png",
+                    "image/gif"
+                ],
+                "tags": [
+                    "cache"
+                ],
+                "summary": "Get a cached image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Image filename",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Image file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Image not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Get the API health status",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Health Check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/health.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/map/all": {
+            "get": {
+                "description": "Returns a list of all available Valorant maps",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "maps"
+                ],
+                "summary": "Get all maps",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Map"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/roulette.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/map/roulette": {
+            "get": {
+                "description": "Returns a randomly selected Valorant map, with optional filtering",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "maps"
+                ],
+                "summary": "Get a random map",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter to only standard maps (maps with tactical description)",
+                        "name": "standard",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "description": "List of map UUIDs to exclude from selection",
+                        "name": "banned",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Map"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/roulette.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/roulette.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/ping": {
+            "get": {
+                "description": "Get a simple pong response",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Simple ping endpoint",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "domain.Callout": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "$ref": "#/definitions/domain.Location"
+                },
+                "regionName": {
+                    "type": "string"
+                },
+                "superRegionName": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.Location": {
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            }
+        },
+        "domain.Map": {
+            "type": "object",
+            "properties": {
+                "assetPath": {
+                    "type": "string"
+                },
+                "callouts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Callout"
+                    }
+                },
+                "coordinates": {
+                    "type": "string"
+                },
+                "displayIcon": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "listViewIcon": {
+                    "type": "string"
+                },
+                "listViewIconTall": {
+                    "type": "string"
+                },
+                "mapUrl": {
+                    "type": "string"
+                },
+                "narrativeDescription": {
+                    "type": "string"
+                },
+                "premierBackgroundImage": {
+                    "type": "string"
+                },
+                "splash": {
+                    "type": "string"
+                },
+                "stylizedBackgroundImage": {
+                    "type": "string"
+                },
+                "tacticalDescription": {
+                    "type": "string"
+                },
+                "uuid": {
+                    "type": "string"
+                },
+                "xMultiplier": {
+                    "type": "number"
+                },
+                "xScalarToAdd": {
+                    "type": "number"
+                },
+                "yMultiplier": {
+                    "type": "number"
+                },
+                "yScalarToAdd": {
+                    "type": "number"
+                }
+            }
+        },
+        "health.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "go_version": {
+                    "type": "string"
+                },
+                "memory": {
+                    "$ref": "#/definitions/health.Memory"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "uptime": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "health.Memory": {
+            "type": "object",
+            "properties": {
+                "alloc": {
+                    "type": "integer"
+                },
+                "num_gc": {
+                    "type": "integer"
+                },
+                "sys": {
+                    "type": "integer"
+                },
+                "total_alloc": {
+                    "type": "integer"
+                }
+            }
+        },
+        "roulette.ResponseError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

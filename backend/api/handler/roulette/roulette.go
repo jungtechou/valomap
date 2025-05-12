@@ -14,29 +14,33 @@ import (
 
 // ResponseError represents an API error response
 type ResponseError struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
-	Code    int    `json:"code"`
+	Error   string `json:"error" example:"service_unavailable"`
+	Message string `json:"message,omitempty" example:"Map service unavailable"`
+	Code    int    `json:"code" example:"503"`
 }
 
+// NewHandler creates a new roulette handler instance
 func NewHandler(service roulette.Service) Handler {
 	return &RouletteHandler{service: service}
 }
 
+// RouletteHandler handles map selection requests
 type RouletteHandler struct {
 	service roulette.Service
 }
 
 // GetMap godoc
 // @Summary Get a random map
-// @Description Returns a randomly selected Valorant map, with optional filtering
+// @Description Returns a randomly selected Valorant map, with optional filtering by map type and exclusions
 // @Tags maps
+// @Accept json
 // @Produce json
-// @Param standard query boolean false "Filter to only standard maps (maps with tactical description)"
-// @Param banned query array false "List of map UUIDs to exclude from selection"
-// @Success 200 {object} domain.Map
-// @Failure 404 {object} ResponseError
-// @Failure 500 {object} ResponseError
+// @Param standard query boolean false "Filter to only standard maps (maps with tactical description)" example:"true"
+// @Param banned query array false "List of map UUIDs to exclude from selection" collectionFormat:"multi" items.type:string
+// @Success 200 {object} domain.Map "Successfully retrieved random map"
+// @Failure 404 {object} ResponseError "No maps available after filtering"
+// @Failure 503 {object} ResponseError "Map service unavailable"
+// @Failure 500 {object} ResponseError "Internal server error"
 // @Router /map/roulette [get]
 func (r *RouletteHandler) GetMap(c *gin.Context) {
 	logger := logrus.WithField("handler", "GetMap")
@@ -119,11 +123,13 @@ func (r *RouletteHandler) handleError(c *gin.Context, err error, standardOnly bo
 
 // GetAllMaps godoc
 // @Summary Get all maps
-// @Description Returns a list of all available Valorant maps
+// @Description Returns a list of all available Valorant maps with their details and images
 // @Tags maps
+// @Accept json
 // @Produce json
-// @Success 200 {array} domain.Map
-// @Failure 500 {object} ResponseError
+// @Success 200 {array} domain.Map "Successfully retrieved all maps"
+// @Failure 503 {object} ResponseError "Map service unavailable"
+// @Failure 500 {object} ResponseError "Internal server error"
 // @Router /map/all [get]
 func (r *RouletteHandler) GetAllMaps(c *gin.Context) {
 	logger := logrus.WithField("handler", "GetAllMaps")
@@ -162,6 +168,7 @@ func (r *RouletteHandler) GetAllMaps(c *gin.Context) {
 	c.JSON(http.StatusOK, maps)
 }
 
+// GetRouteInfos implements handler.Handler interface
 func (r *RouletteHandler) GetRouteInfos() []handler.RouteInfo {
 	return []handler.RouteInfo{
 		{
