@@ -15,6 +15,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// HTTPClient interface for making HTTP requests
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // ImageCache is responsible for caching map images
 type ImageCache interface {
 	// GetOrDownloadImage retrieves an image from the cache or downloads it if not found
@@ -32,7 +37,7 @@ type ImageCache interface {
 
 type imageCache struct {
 	cachePath     string
-	client        *http.Client
+	client        HTTPClient
 	mutex         sync.RWMutex
 	cachedImages  map[string]string
 	downloadQueue chan downloadTask
@@ -125,6 +130,10 @@ func (c *imageCache) downloadImage(ctx ctx.CTX, imageURL, cacheKey string) (stri
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
+	// Add optimization headers for faster downloads
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Connection", "keep-alive")
+
 	// Execute request
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -140,7 +149,20 @@ func (c *imageCache) downloadImage(ctx ctx.CTX, imageURL, cacheKey string) (stri
 	// Determine file extension from URL or content type
 	extension := filepath.Ext(imageURL)
 	if extension == "" {
-		extension = ".jpg" // Default to jpg if no extension found
+		// Try to determine from content type
+		contentType := resp.Header.Get("Content-Type")
+		switch contentType {
+		case "image/jpeg":
+			extension = ".jpg"
+		case "image/png":
+			extension = ".png"
+		case "image/gif":
+			extension = ".gif"
+		case "image/webp":
+			extension = ".webp"
+		default:
+			extension = ".jpg" // Default to jpg if unknown
+		}
 	}
 
 	// Create output file path

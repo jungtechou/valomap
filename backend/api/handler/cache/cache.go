@@ -1,9 +1,11 @@
 package cache
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jungtechou/valomap/api/handler"
 	"github.com/jungtechou/valomap/service/cache"
@@ -62,10 +64,42 @@ func (h *CacheHandler) GetCachedImage(c *gin.Context) {
 	filePath := filepath.Join(h.imageCachePath, cleanFilename)
 
 	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	fileInfo, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
 		logger.WithField("file", filePath).Info("Requested cache file not found")
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
+	}
+
+	// Get file extension to determine content type
+	ext := filepath.Ext(cleanFilename)
+	var contentType string
+	switch strings.ToLower(ext) {
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".gif":
+		contentType = "image/gif"
+	case ".webp":
+		contentType = "image/webp"
+	default:
+		contentType = "application/octet-stream"
+	}
+
+	// Set cache control headers
+	c.Header("Cache-Control", "public, max-age=604800") // 7 days
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
+	c.Header("ETag", fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().Unix(), fileInfo.Size()))
+
+	// Check If-None-Match header for 304 responses
+	if match := c.GetHeader("If-None-Match"); match != "" {
+		etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().Unix(), fileInfo.Size())
+		if match == etag {
+			c.Status(http.StatusNotModified)
+			return
+		}
 	}
 
 	// Serve the file

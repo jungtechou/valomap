@@ -133,7 +133,8 @@ const MapItemMemo = React.memo(({ map, isBanned, toggleMapBan }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [ref, inView] = useInView({
     triggerOnce: true,
-    rootMargin: '200px 0px',
+    rootMargin: '300px 0px', // Increased for earlier loading
+    threshold: 0.1,
   });
 
   // Process the image URLs
@@ -143,8 +144,14 @@ const MapItemMemo = React.memo(({ map, isBanned, toggleMapBan }) => {
   useEffect(() => {
     if (inView && !imageLoaded && imageUrl) {
       const img = new Image();
-      img.src = imageUrl;
+
+      // Add loading priority
+      img.loading = 'lazy';
+      img.decoding = 'async';
+
+      // Set image source and add load handler
       img.onload = () => setImageLoaded(true);
+      img.src = imageUrl;
     }
   }, [inView, imageLoaded, imageUrl]);
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import { motion, AnimatePresence } from "framer-motion";
 import { ensureValidImageUrl } from "../utils/imageUtils";
@@ -117,14 +117,14 @@ const MapDetailHeading = styled.h3`
   letter-spacing: 1px;
 `;
 
-// Animation variants
+// Optimized animation variants
 const mapCardVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.5,
+      duration: 0.3,
       ease: "easeOut"
     }
   },
@@ -132,13 +132,34 @@ const mapCardVariants = {
     opacity: 0,
     y: -20,
     transition: {
-      duration: 0.3,
+      duration: 0.2,
       ease: "easeIn"
     }
   }
 };
 
 const MapCard = ({ map }) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Reset image loaded state when map changes
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [map?.uuid]);
+
+  // Preload the image when map changes
+  useEffect(() => {
+    if (!map) return;
+
+    // Determine image URL
+    let mapImage = map.splash || map.displayIcon || "https://via.placeholder.com/700x300?text=Map+Image+Unavailable";
+    mapImage = ensureValidImageUrl(mapImage);
+
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => setImageLoaded(true);
+    img.src = mapImage;
+  }, [map]);
+
   if (!map) {
     return (
       <CardContainer
@@ -175,6 +196,7 @@ const MapCard = ({ map }) => {
           src={mapImage}
           role="img"
           aria-label={`${map.displayName} map image`}
+          style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.3s ease' }}
         />
         <CardContent>
           <MapName>{map.displayName}</MapName>

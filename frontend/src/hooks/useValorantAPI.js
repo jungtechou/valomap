@@ -4,15 +4,25 @@ import debounce from "lodash.debounce";
 
 const API_BASE_URL = "/map";
 
-// Create axios instance with defaults
+// Create axios instance with improved defaults
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 8000, // Reduced timeout for faster error detection
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   }
 });
+
+// Add response interceptor for global error handling
+apiClient.interceptors.response.use(
+  response => response,
+  error => {
+    // Log error for debugging
+    console.error('API request failed:', error);
+    return Promise.reject(error);
+  }
+);
 
 export const useValorantAPI = () => {
   const [loading, setLoading] = useState(false);
@@ -34,20 +44,16 @@ export const useValorantAPI = () => {
     try {
       // Check cache first
       if (cache.current[cacheKey]) {
-        // Use setTimeout to prevent blocking the main thread
-        setTimeout(() => {
-          setLoading(false);
-        }, 0);
+        // Return immediately from cache to prevent loading flicker
+        setLoading(false);
         return cache.current[cacheKey];
       }
 
       const response = await apiClient.get(url);
 
-      // Update cache in a non-blocking way
-      setTimeout(() => {
-        cache.current[cacheKey] = response.data;
-        setLoading(false);
-      }, 0);
+      // Add to cache immediately
+      cache.current[cacheKey] = response.data;
+      setLoading(false);
 
       return response.data;
     } catch (err) {
@@ -70,36 +76,28 @@ export const useValorantAPI = () => {
 
   // Get a random map with optional standard filter and banned maps
   const getRandomMapInternal = useCallback(async (standardOnly = false, bannedMaps = []) => {
-    // Start building the endpoint with query parameters
-    let endpoint = '/roulette';
+    // Build query params more efficiently
     const params = new URLSearchParams();
 
-    // Add standard filter if needed
     if (standardOnly) {
       params.append('standard', 'true');
     }
 
-    // Add banned maps if any - more efficient than building strings manually
     if (bannedMaps.length > 0) {
       bannedMaps.forEach(mapId => {
         params.append('banned', mapId);
       });
     }
 
-    // Construct the final endpoint with query parameters
-    if (params.toString()) {
-      endpoint += '?' + params.toString();
-    }
-
-    // Generate a unique cache key based on the parameters
+    const endpoint = `/roulette${params.toString() ? '?' + params.toString() : ''}`;
     const cacheKey = generateCacheKey(standardOnly, bannedMaps);
 
     return makeRequest(endpoint, cacheKey);
   }, [makeRequest, generateCacheKey]);
 
-  // Create a debounced version of the function to prevent too many requests when rapidly toggling maps
+  // Create a debounced version of the function with shorter delay
   const getRandomMap = useMemo(() => {
-    const debouncedFn = debounce(getRandomMapInternal, 100, { leading: true, trailing: false });
+    const debouncedFn = debounce(getRandomMapInternal, 50, { leading: true, trailing: false });
 
     // Wrap in another function to preserve the promise interface
     return async (standardOnly = false, bannedMaps = []) => {
