@@ -1,8 +1,11 @@
 package di
 
 import (
+	"net/http"
+
 	"github.com/jungtechou/valomap/api/engine/gin"
 	"github.com/jungtechou/valomap/config"
+	"github.com/jungtechou/valomap/service/cache"
 
 	"github.com/google/wire"
 )
@@ -13,7 +16,8 @@ var InjectorSet = wire.NewSet(wire.Struct(new(Injector), "*"))
 type Injector struct {
 	HttpEngine *gin.GinEngine
 	Config     *config.Config
-	// TODO: Add services here
+	ImageCache cache.ImageCache
+	HTTPClient *http.Client
 }
 
 // ProvideConfig provides the application configuration

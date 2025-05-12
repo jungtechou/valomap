@@ -10,6 +10,7 @@ import (
 
 	domain "github.com/jungtechou/valomap/domain/map"
 	"github.com/jungtechou/valomap/pkg/ctx"
+	"github.com/jungtechou/valomap/service/cache"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,16 +27,18 @@ var (
 )
 
 type RouletteService struct {
-	client *http.Client
-	rng    *rand.Rand // Thread-safe random number generator
+	client     *http.Client
+	rng        *rand.Rand // Thread-safe random number generator
+	imageCache cache.ImageCache
 }
 
-func NewService(c *http.Client) Service {
+func NewService(c *http.Client, imageCache cache.ImageCache) Service {
 	// Create a new random source with current time seed
 	source := rand.NewSource(time.Now().UnixNano())
 	return &RouletteService{
-		client: c,
-		rng:    rand.New(source),
+		client:     c,
+		rng:        rand.New(source),
+		imageCache: imageCache,
 	}
 }
 
@@ -75,6 +78,15 @@ func (s *RouletteService) fetchMaps(ctx ctx.CTX) ([]domain.Map, error) {
 	if len(maps) == 0 {
 		ctx.FieldLogger.Error("Received empty map list from API")
 		return nil, ErrEmptyMapList
+	}
+
+	// Process map images via caching service if available
+	if s.imageCache != nil {
+		ctx.FieldLogger.Info("Processing map images through cache service")
+		maps, err = s.imageCache.CacheMapImages(ctx, maps)
+		if err != nil {
+			ctx.FieldLogger.WithError(err).Warn("Error while caching map images, continuing with original URLs")
+		}
 	}
 
 	// Log successful fetch

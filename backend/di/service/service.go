@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jungtechou/valomap/config"
 	domain "github.com/jungtechou/valomap/domain/map"
+	"github.com/jungtechou/valomap/service/cache"
 	"github.com/jungtechou/valomap/service/roulette"
 
 	"github.com/google/wire"
@@ -35,8 +37,14 @@ func ProvideHTTPClient() *http.Client {
 	}
 }
 
+// ProvideImageCache creates and returns an image cache service
+func ProvideImageCache(cfg *config.Config, client *http.Client) (cache.ImageCache, error) {
+	return cache.NewImageCache(cfg, client)
+}
+
 var ServiceSet = wire.NewSet(
 	roulette.NewService,
 	ProvideMapPool,
 	ProvideHTTPClient,
+	ProvideImageCache,
 )

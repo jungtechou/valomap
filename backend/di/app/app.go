@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jungtechou/valomap/di"
+	"github.com/jungtechou/valomap/service/cache"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +24,15 @@ func Run() {
 	if err != nil {
 		log.WithError(err).Fatal("Failed to build injector")
 	}
-	defer cleanup()
+	defer func() {
+		// Shutdown image cache if available
+		if injector.ImageCache != nil {
+			log.Info("Shutting down image cache")
+			injector.ImageCache.Shutdown()
+		}
+		// Run cleanup
+		cleanup()
+	}()
 
 	// Log configuration if available
 	if injector.Config != nil {
@@ -37,6 +46,31 @@ func Run() {
 				return "development"
 			}(),
 		}).Info("Application configured")
+	}
+
+	// Prewarm the image cache if available
+	if injector.Config != nil && injector.ImageCache != nil && injector.HTTPClient != nil && injector.Config.API.MapAPIURL != "" {
+		log.Info("Prewarming map image cache")
+		prewarmer := cache.NewMapPrewarmer(injector.ImageCache, injector.HTTPClient, injector.Config.API.MapAPIURL)
+
+		go func() {
+			if err := prewarmer.PrewarmMapImages(); err != nil {
+				log.WithError(err).Warn("Cache prewarming encountered an error")
+			} else {
+				log.Info("Cache prewarming completed successfully")
+			}
+		}()
+	} else {
+		log.Warn("Cache prewarming skipped due to missing dependencies")
+		if injector.ImageCache == nil {
+			log.Warn("ImageCache is nil")
+		}
+		if injector.HTTPClient == nil {
+			log.Warn("HTTPClient is nil")
+		}
+		if injector.Config == nil || injector.Config.API.MapAPIURL == "" {
+			log.Warn("MapAPIURL is empty or Config is nil")
+		}
 	}
 
 	// Set up graceful shutdown
