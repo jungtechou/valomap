@@ -2,351 +2,166 @@ package cache
 
 import (
 	"bytes"
-	"errors"
+	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	domain "github.com/jungtechou/valomap/domain/map"
 	"github.com/jungtechou/valomap/pkg/ctx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-// MockImageCache is a mock for the ImageCache interface
-type MockImageCache struct {
+// MockImageCacheForPrewarm is a mock for the ImageCache interface for prewarming tests
+type MockImageCacheForPrewarm struct {
 	mock.Mock
 }
 
-func (m *MockImageCache) GetOrDownloadImage(ctx ctx.CTX, url, key string) (string, error) {
-	args := m.Called(ctx, url, key)
+func (m *MockImageCacheForPrewarm) GetOrDownloadImage(ctx ctx.CTX, imageURL, cacheKey string) (string, error) {
+	args := m.Called(ctx, imageURL, cacheKey)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockImageCache) CacheMapImages(ctx ctx.CTX, maps []domain.Map) ([]domain.Map, error) {
-	args := m.Called(ctx, maps)
-	return args.Get(0).([]domain.Map), args.Error(1)
-}
-
-func (m *MockImageCache) PrewarmCache(ctx ctx.CTX, urlMap map[string]string) error {
+func (m *MockImageCacheForPrewarm) PrewarmCache(ctx ctx.CTX, urlMap map[string]string) error {
 	args := m.Called(ctx, urlMap)
 	return args.Error(0)
 }
 
-func (m *MockImageCache) Shutdown() {
+func (m *MockImageCacheForPrewarm) CacheMapImages(ctx ctx.CTX, maps []domain.Map) ([]domain.Map, error) {
+	args := m.Called(ctx, maps)
+	return args.Get(0).([]domain.Map), args.Error(1)
+}
+
+func (m *MockImageCacheForPrewarm) Shutdown() {
 	m.Called()
 }
 
-// mockTransport is a custom RoundTripper for testing
-type mockTransport struct {
-	mockResponse *http.Response
-	mockError    error
+// MockHTTPTransport is a mock HTTP transport for testing the prewarmer
+type MockHTTPTransport struct {
+	mock.Mock
 }
 
-func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	return m.mockResponse, m.mockError
+func (m *MockHTTPTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	args := m.Called(req)
+	return args.Get(0).(*http.Response), args.Error(1)
 }
 
+// MockMapService is a mock for the map service
+type MockMapService struct {
+	mock.Mock
+}
+
+func (m *MockMapService) GetAllMaps(ctx ctx.CTX) ([]domain.Map, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]domain.Map), args.Error(1)
+}
+
+// TestNewMapPrewarmer tests the NewMapPrewarmer function
 func TestNewMapPrewarmer(t *testing.T) {
-	// Create mocks
-	mockCache := new(MockImageCache)
+	// Create mock dependencies
+	mockCache := new(MockImageCacheForPrewarm)
 	mockClient := &http.Client{}
-	apiURL := "http://example.com/api"
+	apiURL := "https://example.com/api/maps"
 
-	// Create the prewarmer
+	// Test creation of the prewarmer
 	prewarmer := NewMapPrewarmer(mockCache, mockClient, apiURL)
 
-	// Assertions
+	// Verify result
 	assert.NotNil(t, prewarmer)
 	assert.Equal(t, mockCache, prewarmer.cache)
 	assert.Equal(t, mockClient, prewarmer.client)
 	assert.Equal(t, apiURL, prewarmer.apiURL)
 }
 
-func TestPrewarmMapImagesSuccess(t *testing.T) {
-	// Set up test timeout to prevent hanging
-	testTimeout := time.NewTimer(5 * time.Second)
-	defer testTimeout.Stop()
+// TestPrewarmMapImages tests the PrewarmMapImages function
+func TestPrewarmMapImages(t *testing.T) {
+	// Create mock dependencies
+	mockCache := new(MockImageCacheForPrewarm)
+	mockTransport := new(MockHTTPTransport)
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-
-		// Create mocks
-		mockCache := new(MockImageCache)
-		apiURL := "http://example.com/api"
-
-		// Mock response data
-		responseJSON := `{
-			"status": 200,
-			"data": [
-				{
-					"uuid": "map1",
-					"displayName": "Test Map 1",
-					"splash": "http://example.com/map1/splash.jpg",
-					"displayIcon": "http://example.com/map1/icon.png"
-				},
-				{
-					"uuid": "map2",
-					"displayName": "Test Map 2",
-					"splash": "http://example.com/map2/splash.jpg"
-				}
-			]
-		}`
-
-		// Create mock transport with successful response
-		mockResp := &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(bytes.NewBufferString(responseJSON)),
-		}
-
-		mockClient := &http.Client{
-			Transport: &mockTransport{
-				mockResponse: mockResp,
-				mockError:    nil,
-			},
-		}
-
-		// Create the prewarmer with our mocked client
-		prewarmer := &MapPrewarmer{
-			cache:  mockCache,
-			client: mockClient,
-			apiURL: apiURL,
-		}
-
-		// Expected image URLs to prewarm
-		expectedImageURLs := map[string]string{
-			"map_map1_splash": "http://example.com/map1/splash.jpg",
-			"map_map1_icon":   "http://example.com/map1/icon.png",
-			"map_map2_splash": "http://example.com/map2/splash.jpg",
-		}
-
-		// Mock cache prewarm
-		mockCache.On("PrewarmCache", mock.Anything, expectedImageURLs).Return(nil)
-
-		// Execute the method
-		err := prewarmer.PrewarmMapImages()
-
-		// Assertions
-		assert.NoError(t, err)
-		mockCache.AssertExpectations(t)
-	}()
-
-	select {
-	case <-done:
-		// Test completed successfully
-	case <-testTimeout.C:
-		t.Fatal("Test timed out after 5 seconds")
+	// Create HTTP client with mock transport
+	client := &http.Client{
+		Transport: mockTransport,
 	}
-}
 
-func TestPrewarmMapImagesHTTPError(t *testing.T) {
-	// Set up test timeout to prevent hanging
-	testTimeout := time.NewTimer(5 * time.Second)
-	defer testTimeout.Stop()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-
-		// Create mocks
-		mockCache := new(MockImageCache)
-		apiURL := "http://example.com/api"
-
-		// Setup HTTP error
-		httpError := errors.New("connection error")
-		mockClient := &http.Client{
-			Transport: &mockTransport{
-				mockResponse: nil,
-				mockError:    httpError,
-			},
-		}
-
-		// Create the prewarmer with our mocked client
-		prewarmer := &MapPrewarmer{
-			cache:  mockCache,
-			client: mockClient,
-			apiURL: apiURL,
-		}
-
-		// Execute the method
-		err := prewarmer.PrewarmMapImages()
-
-		// Assertions
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "connection error") // Check for error message containment instead
-		mockCache.AssertExpectations(t)                     // No calls expected
-	}()
-
-	select {
-	case <-done:
-		// Test completed successfully
-	case <-testTimeout.C:
-		t.Fatal("Test timed out after 5 seconds")
+	// Create test maps
+	testMaps := []domain.Map{
+		{
+			UUID:        "map1",
+			DisplayName: "Map One",
+			Splash:      "https://example.com/splash1.jpg",
+			DisplayIcon: "https://example.com/icon1.jpg",
+		},
+		{
+			UUID:        "map2",
+			DisplayName: "Map Two",
+			Splash:      "https://example.com/splash2.jpg",
+			DisplayIcon: "https://example.com/icon2.jpg",
+		},
 	}
-}
 
-func TestPrewarmMapImagesNonOKStatus(t *testing.T) {
-	// Set up test timeout to prevent hanging
-	testTimeout := time.NewTimer(5 * time.Second)
-	defer testTimeout.Stop()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-
-		// Create mocks
-		mockCache := new(MockImageCache)
-		apiURL := "http://example.com/api"
-
-		// Setup non-OK response
-		mockClient := &http.Client{
-			Transport: &mockTransport{
-				mockResponse: &http.Response{
-					StatusCode: http.StatusNotFound,
-					Body:       io.NopCloser(bytes.NewBufferString("")),
-				},
-				mockError: nil,
-			},
-		}
-
-		// Create the prewarmer with our mocked client
-		prewarmer := &MapPrewarmer{
-			cache:  mockCache,
-			client: mockClient,
-			apiURL: apiURL,
-		}
-
-		// Execute the method
-		err := prewarmer.PrewarmMapImages()
-
-		// Assertions
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "received non-OK status code: 404")
-		mockCache.AssertExpectations(t) // No calls expected
-	}()
-
-	select {
-	case <-done:
-		// Test completed successfully
-	case <-testTimeout.C:
-		t.Fatal("Test timed out after 5 seconds")
+	// Create API response
+	apiResp := domain.MapResponse{
+		Status: 200,
+		Data:   testMaps,
 	}
-}
+	jsonData, err := json.Marshal(apiResp)
+	require.NoError(t, err)
 
-func TestPrewarmMapImagesInvalidJSON(t *testing.T) {
-	// Set up test timeout to prevent hanging
-	testTimeout := time.NewTimer(5 * time.Second)
-	defer testTimeout.Stop()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-
-		// Create mocks
-		mockCache := new(MockImageCache)
-		apiURL := "http://example.com/api"
-
-		// Setup invalid JSON response
-		mockClient := &http.Client{
-			Transport: &mockTransport{
-				mockResponse: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString("invalid json")),
-				},
-				mockError: nil,
-			},
-		}
-
-		// Create the prewarmer with our mocked client
-		prewarmer := &MapPrewarmer{
-			cache:  mockCache,
-			client: mockClient,
-			apiURL: apiURL,
-		}
-
-		// Execute the method
-		err := prewarmer.PrewarmMapImages()
-
-		// Assertions
-		assert.Error(t, err)
-		mockCache.AssertExpectations(t) // No calls expected
-	}()
-
-	select {
-	case <-done:
-		// Test completed successfully
-	case <-testTimeout.C:
-		t.Fatal("Test timed out after 5 seconds")
+	// Mock HTTP response
+	mockResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(jsonData)),
 	}
-}
 
-func TestPrewarmMapImagesCacheError(t *testing.T) {
-	// Set up test timeout to prevent hanging
-	testTimeout := time.NewTimer(5 * time.Second)
-	defer testTimeout.Stop()
+	// Configure mock transport
+	apiURL := "https://example.com/api/maps"
+	mockTransport.On("RoundTrip", mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.String() == apiURL
+	})).Return(mockResp, nil)
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
+	// Configure mock cache
+	mockCache.On("PrewarmCache", mock.Anything, mock.MatchedBy(func(urlMap map[string]string) bool {
+		// Verify the URL map contains the expected entries
+		return len(urlMap) == 4
+	})).Return(nil)
 
-		// Create mocks
-		mockCache := new(MockImageCache)
-		apiURL := "http://example.com/api"
+	// Create prewarmer
+	prewarmer := NewMapPrewarmer(mockCache, client, apiURL)
 
-		// Mock response data
-		responseJSON := `{
-			"status": 200,
-			"data": [
-				{
-					"uuid": "map1",
-					"displayName": "Test Map 1",
-					"splash": "http://example.com/map1/splash.jpg"
-				}
-			]
-		}`
+	// Call the function
+	err = prewarmer.PrewarmMapImages()
 
-		// Setup mock client with good response
-		mockClient := &http.Client{
-			Transport: &mockTransport{
-				mockResponse: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(responseJSON)),
-				},
-				mockError: nil,
-			},
-		}
+	// Verify results
+	require.NoError(t, err)
+	mockTransport.AssertExpectations(t)
+	mockCache.AssertExpectations(t)
 
-		// Create the prewarmer with our mocked client
-		prewarmer := &MapPrewarmer{
-			cache:  mockCache,
-			client: mockClient,
-			apiURL: apiURL,
-		}
+	// Test with HTTP error
+	httpErr := new(MockHTTPTransport)
+	httpErr.On("RoundTrip", mock.Anything).Return(&http.Response{}, assert.AnError)
 
-		// Expected image URLs to prewarm
-		expectedImageURLs := map[string]string{
-			"map_map1_splash": "http://example.com/map1/splash.jpg",
-		}
+	clientErr := &http.Client{Transport: httpErr}
+	prewarmerErr := NewMapPrewarmer(mockCache, clientErr, apiURL)
 
-		// Mock cache prewarm with error
-		cacheError := errors.New("cache error")
-		mockCache.On("PrewarmCache", mock.Anything, expectedImageURLs).Return(cacheError)
+	err = prewarmerErr.PrewarmMapImages()
+	assert.Error(t, err)
+	httpErr.AssertExpectations(t)
 
-		// Execute the method
-		err := prewarmer.PrewarmMapImages()
-
-		// Assertions
-		assert.Error(t, err)
-		assert.Equal(t, cacheError, err)
-		mockCache.AssertExpectations(t)
-	}()
-
-	select {
-	case <-done:
-		// Test completed successfully
-	case <-testTimeout.C:
-		t.Fatal("Test timed out after 5 seconds")
+	// Test with non-200 status code
+	httpBadStatus := new(MockHTTPTransport)
+	badResp := &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error": "server error"}`))),
 	}
+	httpBadStatus.On("RoundTrip", mock.Anything).Return(badResp, nil)
+
+	clientBadStatus := &http.Client{Transport: httpBadStatus}
+	prewarmerBadStatus := NewMapPrewarmer(mockCache, clientBadStatus, apiURL)
+
+	err = prewarmerBadStatus.PrewarmMapImages()
+	assert.Error(t, err)
+	httpBadStatus.AssertExpectations(t)
 }

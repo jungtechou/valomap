@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Import setupTestContext from roulette_test.go - it's already defined there
+
 // mockRouletteService is a testable variant of RouletteService with replaceable functionality
 type mockRouletteService struct {
 	RouletteService

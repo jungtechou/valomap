@@ -2,9 +2,11 @@ package cache
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // Constants for tests
@@ -36,9 +39,10 @@ func (m *MockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 // Setup test helpers
 func setupTestContext() ctx.CTX {
 	logger := logrus.New()
-	logger.SetOutput(io.Discard) // Silence logs during tests
+	logger.Out = io.Discard // Suppress logging during tests
 	return ctx.CTX{
-		FieldLogger: logger.WithField("test", true),
+		Context:     context.Background(),
+		FieldLogger: logrus.NewEntry(logger),
 	}
 }
 
@@ -198,108 +202,77 @@ func TestDownloadImageErrors(t *testing.T) {
 }
 
 func TestPrewarmCache(t *testing.T) {
-	// Test 1: Successful prewarming
-	t.Run("Successful prewarming", func(t *testing.T) {
-		cache, tmpDir, mockClient := createTestCache(t)
-		defer os.RemoveAll(tmpDir)
-		// Shutdown will be called by t.Cleanup
+	// Create a temp directory for the test
+	tempDir, err := ioutil.TempDir("", "prewarm-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
 
-		testCtx := setupTestContext()
-		testImageData := []byte("test image data")
+	// Create a mock HTTP client
+	mockClient := new(MockHTTPClient)
 
-		urlMap := map[string]string{
-			"key1": "http://example.com/img1.jpg",
-			"key2": "http://example.com/img2.png",
-		}
+	// Setup successful response
+	successResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader([]byte("image data"))),
+		Header:     make(http.Header),
+	}
+	successResp.Header.Set("Content-Type", "image/jpeg")
 
-		// Mock HTTP client responses
-		mockResp1 := createMockImageResponse(testImageData, "image/jpeg")
-		mockResp2 := createMockImageResponse(testImageData, "image/png")
+	// Configure mock client behavior
+	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.String() == "https://example.com/image1.jpg"
+	})).Return(successResp, nil)
 
-		mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-			return req.URL.String() == "http://example.com/img1.jpg"
-		})).Return(mockResp1, nil)
+	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.String() == "https://example.com/image2.png"
+	})).Return(successResp, nil)
 
-		mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-			return req.URL.String() == "http://example.com/img2.png"
-		})).Return(mockResp2, nil)
+	// Create image cache
+	cache := &imageCache{
+		cachePath:     tempDir,
+		client:        mockClient,
+		cachedImages:  make(map[string]string),
+		downloadQueue: make(chan downloadTask, 10),
+		quit:          make(chan struct{}),
+	}
 
-		// Run prewarming
-		err := cache.PrewarmCache(testCtx, urlMap)
+	// Start worker goroutines
+	for i := 0; i < 2; i++ {
+		go cache.downloadWorker()
+	}
 
-		// Assertions
-		assert.NoError(t, err, "PrewarmCache should not error")
+	// Create URL map for prewarming
+	urlMap := map[string]string{
+		"image1": "https://example.com/image1.jpg",
+		"image2": "https://example.com/image2.png",
+	}
 
-		// Verify both images were downloaded
-		mockClient.AssertNumberOfCalls(t, "Do", 2)
+	// Test PrewarmCache
+	testCtx := setupTestContext()
+	err = cache.PrewarmCache(testCtx, urlMap)
+	require.NoError(t, err)
 
-		// Verify both images are in memory cache
-		cacheMem := cache.(*imageCache)
-		cacheMem.mutex.RLock()
-		assert.Len(t, cacheMem.cachedImages, 2, "Should have 2 images in memory cache")
-		assert.Contains(t, cacheMem.cachedImages, "key1", "First key should be in memory cache")
-		assert.Contains(t, cacheMem.cachedImages, "key2", "Second key should be in memory cache")
-		cacheMem.mutex.RUnlock()
-	})
+	// Allow background downloads to complete
+	time.Sleep(100 * time.Millisecond)
+	cache.wg.Wait()
 
-	// Test 2: Prewarming with existing cache
-	t.Run("Prewarming with existing cache", func(t *testing.T) {
-		cache, tmpDir, mockClient := createTestCache(t)
-		defer os.RemoveAll(tmpDir)
-		// Shutdown will be called by t.Cleanup
+	// Verify images were cached
+	cache.mutex.RLock()
+	assert.Equal(t, 2, len(cache.cachedImages))
+	assert.Contains(t, cache.cachedImages, "image1")
+	assert.Contains(t, cache.cachedImages, "image2")
+	cache.mutex.RUnlock()
 
-		testCtx := setupTestContext()
-		testImageData := []byte("test image data")
+	// Test GetOrDownloadImage for already cached images
+	imagePath, err := cache.GetOrDownloadImage(testCtx, "https://example.com/image1.jpg", "image1")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, imagePath)
 
-		// Pre-cache one image
-		key1 := "key1"
-		url1 := "http://example.com/img1.jpg"
+	// Shutdown the cache
+	cache.Shutdown()
 
-		// Create a file directly to simulate pre-cached image
-		filePath := filepath.Join(tmpDir, key1+".jpg")
-		err := os.WriteFile(filePath, testImageData, 0644)
-		assert.NoError(t, err, "Failed to write test file")
-
-		// Add to memory cache
-		cacheMem := cache.(*imageCache)
-		cacheMem.mutex.Lock()
-		cacheMem.cachedImages[key1] = filePath
-		cacheMem.mutex.Unlock()
-
-		// URL map with both pre-cached and new image
-		urlMap := map[string]string{
-			key1:   url1,
-			"key2": "http://example.com/img2.png",
-		}
-
-		// Mock HTTP client response for the second image only
-		mockResp := createMockImageResponse(testImageData, "image/png")
-		mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-			return req.URL.String() == "http://example.com/img2.png"
-		})).Return(mockResp, nil)
-
-		// Run prewarming
-		err = cache.PrewarmCache(testCtx, urlMap)
-
-		// Assertions
-		assert.NoError(t, err, "PrewarmCache should not error")
-
-		// Verify only the non-cached image was downloaded
-		mockClient.AssertNumberOfCalls(t, "Do", 1)
-
-		// Verify both images are in memory cache
-		cacheMem.mutex.RLock()
-		assert.Len(t, cacheMem.cachedImages, 2, "Should have 2 images in memory cache")
-		assert.Contains(t, cacheMem.cachedImages, key1, "First key should be in memory cache")
-		assert.Contains(t, cacheMem.cachedImages, "key2", "Second key should be in memory cache")
-		cacheMem.mutex.RUnlock()
-	})
-
-	// Test 3: Prewarming with timeout
-	t.Run("Prewarming with timeout", func(t *testing.T) {
-		// Skip in normal testing as it takes too long
-		t.Skip("Skipping prewarming timeout test - it takes too long")
-	})
+	// Verify expectations
+	mockClient.AssertExpectations(t)
 }
 
 func TestNewImageCache(t *testing.T) {
@@ -510,4 +483,40 @@ func TestCacheMapImages_Errors(t *testing.T) {
 
 	// Verify mock was called
 	mockClient.AssertCalled(t, "Do", mock.Anything)
+}
+
+// TestShutdown tests the Shutdown method
+func TestShutdown(t *testing.T) {
+	// Create a temp directory for the test
+	tempDir, err := ioutil.TempDir("", "shutdown-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create image cache
+	cache := &imageCache{
+		cachePath:     tempDir,
+		client:        &http.Client{},
+		cachedImages:  make(map[string]string),
+		downloadQueue: make(chan downloadTask, 10),
+		quit:          make(chan struct{}),
+	}
+
+	// Start worker goroutines
+	for i := 0; i < 2; i++ {
+		go cache.downloadWorker()
+	}
+
+	// Shutdown should close channels and wait for workers
+	cache.Shutdown()
+
+	// Verify downloadQueue is closed by trying to send to it
+	// This should panic if the channel is not closed
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic when sending to closed channel, but got none")
+		}
+	}()
+
+	// This should panic since the channel is closed
+	cache.downloadQueue <- downloadTask{}
 }

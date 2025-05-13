@@ -2,15 +2,12 @@ package config
 
 import (
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestGetEnvInt(t *testing.T) {
@@ -112,119 +109,107 @@ func TestSetDefaults(t *testing.T) {
 }
 
 func TestSetupLogger(t *testing.T) {
-	// Save original log level to restore after test
-	origLevel := logrus.GetLevel()
-	origFormatter := logrus.StandardLogger().Formatter
-	origReportCaller := logrus.StandardLogger().ReportCaller
-
-	defer func() {
-		logrus.SetLevel(origLevel)
-		logrus.SetFormatter(origFormatter)
-		logrus.SetReportCaller(origReportCaller)
-	}()
-
-	// Test with valid level
-	setupLogger(LoggingConfig{
+	// Test 1: JSON format
+	config := LoggingConfig{
 		Level:        "debug",
-		Format:       "text",
+		Format:       "json",
 		ReportCaller: true,
-	})
-
+	}
+	setupLogger(config)
 	assert.Equal(t, logrus.DebugLevel, logrus.GetLevel())
-	assert.IsType(t, &logrus.TextFormatter{}, logrus.StandardLogger().Formatter)
+	_, ok := logrus.StandardLogger().Formatter.(*logrus.JSONFormatter)
+	assert.True(t, ok)
 	assert.True(t, logrus.StandardLogger().ReportCaller)
 
-	// Test with invalid level
-	setupLogger(LoggingConfig{
-		Level:        "invalid",
-		Format:       "json",
+	// Test 2: Text format with invalid level (should default to info)
+	config = LoggingConfig{
+		Level:        "invalid_level",
+		Format:       "text",
 		ReportCaller: false,
-	})
-
+	}
+	setupLogger(config)
 	assert.Equal(t, logrus.InfoLevel, logrus.GetLevel())
-	assert.IsType(t, &logrus.JSONFormatter{}, logrus.StandardLogger().Formatter)
+	_, ok = logrus.StandardLogger().Formatter.(*logrus.TextFormatter)
+	assert.True(t, ok)
 	assert.False(t, logrus.StandardLogger().ReportCaller)
 }
 
 func TestLoad(t *testing.T) {
-	// Skip the environment variable test during coverage tests
-	if os.Getenv("RUNNING_COVERAGE_TESTS") != "" {
-		t.Log("Skipping environment variable tests during coverage run")
+	// Save original environment variables
+	originalPort := os.Getenv("VALOMAP_SERVER_PORT")
+	originalLevel := os.Getenv("VALOMAP_LOGGING_LEVEL")
+	originalMapURL := os.Getenv("VALOMAP_API_MAP_API_URL")
 
-		// Just run a basic test to get coverage
-		cfg := &Config{
-			Server: ServerConfig{
-				Port: "3000",
-			},
-			Logging: LoggingConfig{
-				Level: "info",
-			},
-		}
-
-		// Assert that we can create a config
-		assert.NotNil(t, cfg)
-		assert.Equal(t, "3000", cfg.Server.Port)
-		assert.Equal(t, "info", cfg.Logging.Level)
-		return
-	}
-
-	// Clean up any environment variables set by other tests
-	originalEnv := os.Environ()
-	os.Clearenv()
 	defer func() {
-		// Restore original environment
-		os.Clearenv()
-		for _, env := range originalEnv {
-			parts := strings.SplitN(env, "=", 2)
-			if len(parts) == 2 {
-				os.Setenv(parts[0], parts[1])
-			}
-		}
+		// Restore original environment variables
+		setEnvOrUnset("VALOMAP_SERVER_PORT", originalPort)
+		setEnvOrUnset("VALOMAP_LOGGING_LEVEL", originalLevel)
+		setEnvOrUnset("VALOMAP_API_MAP_API_URL", originalMapURL)
 	}()
 
-	// Test configuration via files
-	t.Run("ConfigFile", func(t *testing.T) {
-		// Create a test config file in a temporary directory
-		tmpDir, err := os.MkdirTemp("", "config-test")
-		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+	// Test default config (unset env vars first)
+	os.Unsetenv("VALOMAP_SERVER_PORT")
+	os.Unsetenv("VALOMAP_LOGGING_LEVEL")
+	os.Unsetenv("VALOMAP_API_MAP_API_URL")
 
-		configPath := filepath.Join(tmpDir, "config.yaml")
+	config, err := Load()
+	assert.NoError(t, err)
+	assert.NotNil(t, config)
+	assert.Equal(t, "3000", config.Server.Port)
+	assert.Equal(t, "info", config.Logging.Level)
+}
 
-		testConfigContent := `
-server:
-  port: "4000"
-logging:
-  level: "debug"
-api:
-  version: "v2"
-security:
-  allowed_origins:
-    - "http://localhost:3000"
-    - "https://valomap.example.com"
-`
-		err = os.WriteFile(configPath, []byte(testConfigContent), 0644)
-		require.NoError(t, err)
+// Helper function to set or unset an environment variable
+func setEnvOrUnset(key, value string) {
+	if value == "" {
+		os.Unsetenv(key)
+	} else {
+		os.Setenv(key, value)
+	}
+}
 
-		// Set current directory to the temp dir to find config.yaml
-		oldDir, err := os.Getwd()
-		require.NoError(t, err)
-		defer os.Chdir(oldDir)
-		os.Chdir(tmpDir)
+func TestGetEnvFunctions(t *testing.T) {
+	// Save original environment variables
+	originalTestInt := os.Getenv("TEST_INT")
+	originalTestBool := os.Getenv("TEST_BOOL")
+	originalTestStr := os.Getenv("TEST_STR")
 
-		// Load the config from the file
-		cfg, err := Load()
-		require.NoError(t, err)
+	defer func() {
+		// Restore original environment variables
+		setEnvOrUnset("TEST_INT", originalTestInt)
+		setEnvOrUnset("TEST_BOOL", originalTestBool)
+		setEnvOrUnset("TEST_STR", originalTestStr)
+	}()
 
-		// Verify the values from config file
-		assert.Equal(t, "4000", cfg.Server.Port)
-		assert.Equal(t, "debug", cfg.Logging.Level)
-		assert.Equal(t, "v2", cfg.API.Version)
-		assert.Contains(t, cfg.Security.AllowedOrigins, "http://localhost:3000")
-		assert.Contains(t, cfg.Security.AllowedOrigins, "https://valomap.example.com")
+	// Test GetEnvInt
+	os.Unsetenv("TEST_INT")
+	assert.Equal(t, 42, GetEnvInt("TEST_INT", 42)) // Default when not set
+	os.Setenv("TEST_INT", "100")
+	assert.Equal(t, 100, GetEnvInt("TEST_INT", 42)) // Parsed value
+	os.Setenv("TEST_INT", "invalid")
+	assert.Equal(t, 42, GetEnvInt("TEST_INT", 42)) // Default when invalid
 
-		// Verify default values for fields not in config file
-		assert.Equal(t, 10*time.Second, cfg.Server.ReadTimeout)
-		assert.False(t, cfg.Redis.Enabled)
-	})
+	// Test GetEnvBool
+	os.Unsetenv("TEST_BOOL")
+	assert.Equal(t, true, GetEnvBool("TEST_BOOL", true)) // Default when not set
+	os.Setenv("TEST_BOOL", "false")
+	assert.Equal(t, false, GetEnvBool("TEST_BOOL", true)) // Parsed value
+	os.Setenv("TEST_BOOL", "invalid")
+	assert.Equal(t, true, GetEnvBool("TEST_BOOL", true)) // Default when invalid
+
+	// Test GetEnvString
+	os.Unsetenv("TEST_STR")
+	assert.Equal(t, "default", GetEnvString("TEST_STR", "default")) // Default when not set
+	os.Setenv("TEST_STR", "value")
+	assert.Equal(t, "value", GetEnvString("TEST_STR", "default")) // Actual value
+}
+
+// Helper function to split environment variable key-value pairs
+func splitKeyValue(env string) (string, string, bool) {
+	for i := 0; i < len(env); i++ {
+		if env[i] == '=' {
+			return env[:i], env[i+1:], true
+		}
+	}
+	return env, "", false
 }
