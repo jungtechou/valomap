@@ -159,6 +159,24 @@ func TestGetCachedImage(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
+	// Test with empty filename
+	t.Run("Empty filename", func(t *testing.T) {
+		// Create a special route for this test case
+		emptyRouter := gin.New()
+		emptyRouter.GET("/cache-empty", func(c *gin.Context) {
+			// Set filename parameter to empty string directly
+			c.Params = []gin.Param{{Key: "filename", Value: ""}}
+			handler.GetCachedImage(c)
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/cache-empty", nil)
+		emptyRouter.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Filename is required")
+	})
+
 	// Test with path traversal attempt
 	t.Run("Path traversal attempt", func(t *testing.T) {
 		w := httptest.NewRecorder()
@@ -166,6 +184,24 @@ func TestGetCachedImage(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	// Test explicit path traversal attempt
+	t.Run("Explicit path traversal attempt", func(t *testing.T) {
+		// Create a special route for this test case
+		traversalRouter := gin.New()
+		traversalRouter.GET("/cache-traversal", func(c *gin.Context) {
+			// Set filename parameter to path traversal directly
+			c.Params = []gin.Param{{Key: "filename", Value: "../etc/passwd"}}
+			handler.GetCachedImage(c)
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/cache-traversal", nil)
+		traversalRouter.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Invalid filename")
 	})
 
 	// Test with If-None-Match header for 304 response

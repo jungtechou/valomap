@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jungtechou/valomap/pkg/ctx"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,24 +20,126 @@ func setupGin() *gin.Engine {
 }
 
 func TestRequestLogger(t *testing.T) {
+	// Create a test logger with a hook to capture output
+	logger := logrus.New()
+	hook := &TestLoggerHook{}
+	logger.AddHook(hook)
+
+	// Save the original logrus instance and restore after test
+	originalLogger := logrus.StandardLogger()
+	logrus.SetOutput(logger.Out)
+	defer func() {
+		logrus.SetOutput(originalLogger.Out)
+	}()
+
 	// Setup
 	router := setupGin()
 	router.Use(RequestLogger())
 
-	router.GET("/test-logger", func(c *gin.Context) {
-		c.String(http.StatusOK, "logger test")
+	// Test successful request
+	t.Run("Successful request", func(t *testing.T) {
+		hook.Clear()
+
+		router.GET("/test-logger", func(c *gin.Context) {
+			c.String(http.StatusOK, "logger test")
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/test-logger", nil)
+		router.ServeHTTP(w, req)
+
+		// Assert
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "logger test", w.Body.String())
+
+		// We can't easily check the logging output directly in a test,
+		// but the middleware should execute without errors
 	})
 
-	// Test
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/test-logger", nil)
-	router.ServeHTTP(w, req)
+	// Test client error (4xx)
+	t.Run("Client error (4xx)", func(t *testing.T) {
+		hook.Clear()
 
-	// Assert
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "logger test", w.Body.String())
+		router.GET("/test-client-error", func(c *gin.Context) {
+			c.AbortWithStatus(http.StatusBadRequest)
+		})
 
-	// Can't directly test logging output, but we ensure the middleware doesn't break the flow
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/test-client-error", nil)
+		router.ServeHTTP(w, req)
+
+		// Assert
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	// Test server error (5xx)
+	t.Run("Server error (5xx)", func(t *testing.T) {
+		hook.Clear()
+
+		router.GET("/test-server-error", func(c *gin.Context) {
+			c.AbortWithStatus(http.StatusInternalServerError)
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/test-server-error", nil)
+		router.ServeHTTP(w, req)
+
+		// Assert
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+
+	// Test with URL query parameters
+	t.Run("Request with query parameters", func(t *testing.T) {
+		hook.Clear()
+
+		router.GET("/test-query", func(c *gin.Context) {
+			c.String(http.StatusOK, c.Request.URL.RawQuery)
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/test-query?param1=value1&param2=value2", nil)
+		router.ServeHTTP(w, req)
+
+		// Assert
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "param1=value1&param2=value2", w.Body.String())
+	})
+
+	// Test with Gin errors
+	t.Run("Request with Gin errors", func(t *testing.T) {
+		hook.Clear()
+
+		router.GET("/test-gin-error", func(c *gin.Context) {
+			c.Error(errors.New("test error"))
+			c.String(http.StatusInternalServerError, "error occurred")
+		})
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/test-gin-error", nil)
+		router.ServeHTTP(w, req)
+
+		// Assert
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, "error occurred", w.Body.String())
+	})
+}
+
+// TestLoggerHook is a custom logrus hook for testing
+type TestLoggerHook struct {
+	Entries []logrus.Entry
+}
+
+func (h *TestLoggerHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *TestLoggerHook) Fire(entry *logrus.Entry) error {
+	h.Entries = append(h.Entries, *entry)
+	return nil
+}
+
+func (h *TestLoggerHook) Clear() {
+	h.Entries = []logrus.Entry{}
 }
 
 func TestErrorHandler(t *testing.T) {

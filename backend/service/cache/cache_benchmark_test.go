@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -15,7 +15,7 @@ import (
 // Setup benchmark-specific context
 func setupBenchContext() ctx.CTX {
 	logger := logrus.New()
-	logger.SetOutput(ioutil.Discard) // Silence logs during benchmarks
+	logger.SetOutput(io.Discard) // Silence logs during benchmarks
 	return ctx.CTX{
 		FieldLogger: logger.WithField("benchmark", true),
 	}
@@ -24,7 +24,7 @@ func setupBenchContext() ctx.CTX {
 // Create a benchmark-specific version of createTestCache
 func createBenchTestCache(b *testing.B) (ImageCache, string, *MockHTTPClient) {
 	// Create temporary directory for test cache
-	tmpDir, err := ioutil.TempDir("", "image-cache-benchmark")
+	tmpDir, err := os.MkdirTemp("", "image-cache-benchmark")
 	if err != nil {
 		b.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -42,7 +42,7 @@ func createBenchTestCache(b *testing.B) (ImageCache, string, *MockHTTPClient) {
 	}
 
 	// Start worker goroutines
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		go cache.downloadWorker()
 	}
 

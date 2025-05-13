@@ -42,6 +42,93 @@ func TestNewEngine(t *testing.T) {
 	assert.NotNil(t, engine.engine)
 }
 
+func TestInitialize(t *testing.T) {
+	// Test case 1: Default mode
+	t.Run("Default mode", func(t *testing.T) {
+		// Create test config
+		cfg := &config.Config{
+			Logging: config.LoggingConfig{
+				Level: "info",
+			},
+			Security: config.SecurityConfig{
+				AllowedOrigins: []string{"http://localhost:3000"},
+				AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+			},
+			Server: config.ServerConfig{
+				Port:         "3000",
+				ReadTimeout:  10 * time.Second,
+				WriteTimeout: 10 * time.Second,
+			},
+		}
+
+		// Create test router
+		testRouter := &mockRouter{}
+
+		// Create engine without initialization
+		engine := &GinEngine{
+			config: cfg,
+		}
+
+		// Initialize engine
+		engine.Initialize(testRouter)
+
+		// Assertions
+		assert.NotNil(t, engine.engine)
+		assert.Equal(t, gin.ReleaseMode, gin.Mode())
+	})
+
+	// Test case 2: Debug mode
+	t.Run("Debug mode", func(t *testing.T) {
+		// Create test config
+		cfg := &config.Config{
+			Logging: config.LoggingConfig{
+				Level: "debug",
+			},
+			Security: config.SecurityConfig{
+				AllowedOrigins: []string{"http://localhost:3000"},
+				AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+			},
+			Server: config.ServerConfig{
+				Port:         "3000",
+				ReadTimeout:  10 * time.Second,
+				WriteTimeout: 10 * time.Second,
+			},
+		}
+
+		// Create test router
+		testRouter := &mockRouter{}
+
+		// Create engine without initialization
+		engine := &GinEngine{
+			config: cfg,
+		}
+
+		// Initialize engine
+		engine.Initialize(testRouter)
+
+		// Assertions
+		assert.NotNil(t, engine.engine)
+		assert.Equal(t, gin.DebugMode, gin.Mode())
+	})
+
+	// Test case 3: No config (default settings)
+	t.Run("No config", func(t *testing.T) {
+		// Create test router
+		testRouter := &mockRouter{}
+
+		// Create engine without config
+		engine := &GinEngine{
+			config: nil,
+		}
+
+		// Initialize engine
+		engine.Initialize(testRouter)
+
+		// Assertions
+		assert.NotNil(t, engine.engine)
+	})
+}
+
 func TestServeHTTP(t *testing.T) {
 	// Setup Gin to test mode
 	gin.SetMode(gin.TestMode)

@@ -3,7 +3,6 @@ package cache
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,6 +45,7 @@ type imageCache struct {
 	cachedImages  map[string]string
 	downloadQueue chan downloadTask
 	wg            sync.WaitGroup
+	quit          chan struct{}
 }
 
 type downloadTask struct {
@@ -62,7 +62,7 @@ func NewImageCache(cfg *config.Config, client *http.Client) (ImageCache, error) 
 	// If testing, use a temporary directory
 	if cfg != nil && cfg.Server.Port == "test" {
 		var err error
-		cachePath, err = ioutil.TempDir("", "image-cache-test")
+		cachePath, err = os.MkdirTemp("", "image-cache-test")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create temp directory: %w", err)
 		}
@@ -78,6 +78,7 @@ func NewImageCache(cfg *config.Config, client *http.Client) (ImageCache, error) 
 		client:        client,
 		cachedImages:  make(map[string]string),
 		downloadQueue: make(chan downloadTask, 10),
+		quit:          make(chan struct{}),
 	}
 
 	// Start worker goroutines to handle downloads in the background
@@ -90,9 +91,17 @@ func NewImageCache(cfg *config.Config, client *http.Client) (ImageCache, error) 
 
 // downloadWorker processes image download requests from the queue
 func (c *imageCache) downloadWorker() {
-	for task := range c.downloadQueue {
-		c.downloadImage(task.Ctx, task.URL, task.CacheKey)
-		c.wg.Done()
+	for {
+		select {
+		case task, ok := <-c.downloadQueue:
+			if !ok {
+				return
+			}
+			c.downloadImage(task.Ctx, task.URL, task.CacheKey)
+			c.wg.Done()
+		case <-c.quit:
+			return
+		}
 	}
 }
 
@@ -317,8 +326,36 @@ func (c *imageCache) CacheMapImages(ctx ctx.CTX, maps []domain.Map) ([]domain.Ma
 
 // Shutdown gracefully shuts down the cache service
 func (c *imageCache) Shutdown() {
-	// Close the download queue to prevent new tasks
-	close(c.downloadQueue)
+	// Use mutex to ensure thread safety during shutdown
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Check if quit channel is initialized and not already closed
+	if c.quit != nil {
+		select {
+		case <-c.quit:
+			// Already closed, do nothing
+		default:
+			// Signal all workers to stop
+			close(c.quit)
+		}
+	}
+
+	// Check if download queue is initialized and not already closed
+	if c.downloadQueue != nil {
+		select {
+		case <-c.downloadQueue:
+			// Already closed or has messages, try to close in defer with recover
+			defer func() {
+				// Recover in case channel is already closed by another goroutine
+				recover()
+			}()
+			close(c.downloadQueue)
+		default:
+			// Close the download queue to prevent new tasks
+			close(c.downloadQueue)
+		}
+	}
 
 	// Wait for all pending downloads to complete
 	c.wg.Wait()
