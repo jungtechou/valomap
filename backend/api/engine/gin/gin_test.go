@@ -21,7 +21,7 @@ func TestNewEngine(t *testing.T) {
 			Level: "info",
 		},
 		Security: config.SecurityConfig{
-			AllowedOrigins: []string{"*"},
+			AllowedOrigins: []string{"http://localhost:3000"},
 			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
 		},
 		Server: config.ServerConfig{
@@ -43,10 +43,22 @@ func TestNewEngine(t *testing.T) {
 }
 
 func TestServeHTTP(t *testing.T) {
-	// Create test config
+	// Setup Gin to test mode
+	gin.SetMode(gin.TestMode)
+
+	// Create test config with proper CORS settings
 	cfg := &config.Config{
 		Logging: config.LoggingConfig{
 			Level: "info",
+		},
+		Security: config.SecurityConfig{
+			AllowedOrigins: []string{"http://localhost:3000"},
+			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+		},
+		Server: config.ServerConfig{
+			Port:         "3000",
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
 		},
 	}
 
@@ -71,6 +83,10 @@ func TestServeHTTP(t *testing.T) {
 func TestGracefulShutdown(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
+		Security: config.SecurityConfig{
+			AllowedOrigins: []string{"http://localhost:3000"},
+			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+		},
 		Server: config.ServerConfig{
 			Port: "0", // Use port 0 for testing to get a random available port
 		},
@@ -94,6 +110,56 @@ func TestGracefulShutdown(t *testing.T) {
 
 	// Assertions - should be no error on shutdown of a non-started server
 	assert.NoError(t, err)
+}
+
+func TestStartServer(t *testing.T) {
+	// Create a test configuration
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port:         "0", // Use a random free port
+			ReadTimeout:  1 * time.Second,
+			WriteTimeout: 1 * time.Second,
+		},
+		Security: config.SecurityConfig{
+			AllowedOrigins: []string{"http://localhost:3000"},
+			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+		},
+	}
+
+	// Create a test router
+	testRouter := &mockRouter{}
+
+	// Create engine
+	engine := NewEngine(testRouter, cfg)
+
+	// Create a goroutine to start the server
+	errChan := make(chan error, 1)
+	go func() {
+		// Start the server - this will block until it's shut down
+		err := engine.StartServer()
+		errChan <- err
+	}()
+
+	// Wait a moment for the server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Shut down the server
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := engine.GracefulShutdown(ctx)
+	assert.NoError(t, err, "Shutdown should succeed")
+
+	// Wait for the server to exit and check if there was an error
+	select {
+	case err := <-errChan:
+		// Either we get ErrServerClosed or nil, both are acceptable
+		if err != nil {
+			assert.Equal(t, http.ErrServerClosed, err, "Server should close gracefully")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not shut down within the expected time")
+	}
 }
 
 // Mock implementation of router.Router

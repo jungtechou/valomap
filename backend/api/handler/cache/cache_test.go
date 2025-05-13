@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	domain "github.com/jungtechou/valomap/domain/map"
 	"github.com/jungtechou/valomap/pkg/ctx"
+	"github.com/jungtechou/valomap/service/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -36,6 +37,30 @@ func (m *MockCacheService) CacheMapImages(ctx ctx.CTX, maps []domain.Map) ([]dom
 }
 
 func (m *MockCacheService) Shutdown() {
+	m.Called()
+}
+
+// MockImageCache is a mock for the ImageCache interface
+type MockImageCache struct {
+	mock.Mock
+}
+
+func (m *MockImageCache) GetOrDownloadImage(ctx ctx.CTX, imageURL, cacheKey string) (string, error) {
+	args := m.Called(ctx, imageURL, cacheKey)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockImageCache) PrewarmCache(ctx ctx.CTX, urlMap map[string]string) error {
+	args := m.Called(ctx, urlMap)
+	return args.Error(0)
+}
+
+func (m *MockImageCache) CacheMapImages(ctx ctx.CTX, maps []domain.Map) ([]domain.Map, error) {
+	args := m.Called(ctx, maps)
+	return args.Get(0).([]domain.Map), args.Error(1)
+}
+
+func (m *MockImageCache) Shutdown() {
 	m.Called()
 }
 
@@ -194,5 +219,29 @@ func TestGetRouteInfos(t *testing.T) {
 	routes := handler.GetRouteInfos()
 	assert.Len(t, routes, 1, "Should return 1 route")
 	assert.Equal(t, http.MethodGet, routes[0].Method)
+	assert.Equal(t, "/cache/:filename", routes[0].Path)
+}
+
+func TestNewHandler(t *testing.T) {
+	// Create a mock cache service
+	mockCache := new(MockImageCache)
+
+	// Call the constructor
+	handler := NewHandler(mockCache)
+
+	// Assert that the handler is not nil and is of correct type
+	assert.NotNil(t, handler)
+	assert.Implements(t, (*Handler)(nil), handler)
+	assert.Implements(t, (*cache.ImageCache)(nil), mockCache)
+
+	// Type assertion to check the fields
+	cacheHandler, ok := handler.(*CacheHandler)
+	assert.True(t, ok)
+	assert.Equal(t, "/home/appuser/images-cache", cacheHandler.imageCachePath)
+	assert.Same(t, mockCache, cacheHandler.cacheService)
+
+	// Verify that we can call GetRouteInfos
+	routes := handler.GetRouteInfos()
+	assert.Len(t, routes, 1)
 	assert.Equal(t, "/cache/:filename", routes[0].Path)
 }

@@ -159,11 +159,18 @@ func RequestContext() gin.HandlerFunc {
 		// Create a new context
 		requestCtx := ctx.Background()
 
+		// Generate a request ID and add it to the context
+		requestID := uuid.New().String()
+		requestCtx = ctx.WithValue(requestCtx, ctx.RequestIDKey, requestID)
+
 		// Add client IP
 		requestCtx = ctx.WithValue(requestCtx, ctx.ClientIPKey, c.ClientIP())
 
 		// Store in Gin context
 		c.Set("requestCtx", requestCtx)
+
+		// Also set the request ID in the gin context for other middleware to use
+		c.Set(string(ctx.RequestIDKey), requestID)
 
 		c.Next()
 	}

@@ -3,12 +3,15 @@ package cache
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/jungtechou/valomap/config"
 	domain "github.com/jungtechou/valomap/domain/map"
 	"github.com/jungtechou/valomap/pkg/ctx"
 	"github.com/sirupsen/logrus"
@@ -223,3 +226,211 @@ func TestPrewarmCache(t *testing.T) {
 		assert.FileExists(t, path, "Cache file should exist on disk")
 	}
 }
+
+func TestNewImageCache(t *testing.T) {
+	// Create a mock HTTP client
+	mockClient := &http.Client{}
+
+	// Create a mock config with test port to use temp directory
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port: "test",
+		},
+	}
+
+	// Create the cache
+	cache, err := NewImageCache(cfg, mockClient)
+
+	// Assertions
+	assert.NoError(t, err, "NewImageCache should not return an error")
+	assert.NotNil(t, cache, "Cache should not be nil")
+
+	// Test with a non-existent directory by patching os.MkdirAll
+	// Save the original function
+	originalMkdirAll := osMkdirAll
+	defer func() { osMkdirAll = originalMkdirAll }()
+
+	// Mock the MkdirAll function to return an error
+	osMkdirAll = func(path string, perm os.FileMode) error {
+		return errors.New("mock directory creation error")
+	}
+
+	// Try to create the cache again with the mocked function
+	badCache, err := NewImageCache(cfg, mockClient)
+
+	// Assertions for the error case
+	assert.Error(t, err, "NewImageCache should return an error when directory creation fails")
+	assert.Nil(t, badCache, "Cache should be nil when there's an error")
+}
+
+func TestGetOrDownloadImage_FileSystemCacheHit(t *testing.T) {
+	// Create a temporary directory for the test
+	tmpDir, err := ioutil.TempDir("", "image-cache-fs-test")
+	assert.NoError(t, err, "Failed to create temp directory")
+	defer os.RemoveAll(tmpDir)
+
+	// Create a mock client
+	mockClient := new(MockHTTPClient)
+
+	// Create a test image file in the filesystem cache
+	testKey := "fs-cache-test"
+	testURL := "http://example.com/test.jpg"
+	testImageData := []byte("test image data")
+
+	// Create the file in the cache directory
+	filePath := filepath.Join(tmpDir, testKey+".jpg")
+	err = ioutil.WriteFile(filePath, testImageData, 0644)
+	assert.NoError(t, err, "Failed to write test file")
+
+	// Create the cache
+	cache := &imageCache{
+		cachePath:     tmpDir,
+		client:        mockClient,
+		cachedImages:  make(map[string]string),
+		downloadQueue: make(chan downloadTask, 10),
+	}
+	defer cache.Shutdown()
+
+	// Create test context
+	testCtx := setupTestContext()
+
+	// Test getting the image from filesystem cache
+	resultPath, err := cache.GetOrDownloadImage(testCtx, testURL, testKey)
+
+	// Assertions
+	assert.NoError(t, err, "GetOrDownloadImage should not error")
+	assert.Equal(t, filePath, resultPath, "Should return the cached file path")
+
+	// Check that the image was added to memory cache
+	cache.mutex.RLock()
+	memCachedPath, exists := cache.cachedImages[testKey]
+	cache.mutex.RUnlock()
+
+	assert.True(t, exists, "Image should be added to memory cache")
+	assert.Equal(t, filePath, memCachedPath, "Cached path should match file path")
+
+	// No HTTP calls should have been made
+	mockClient.AssertNotCalled(t, "Do")
+}
+
+func TestDownloadImageExtensionHandling(t *testing.T) {
+	// Create test environment
+	cache, tmpDir, mockClient := createTestCache(t)
+	defer os.RemoveAll(tmpDir)
+	defer cache.Shutdown()
+
+	testCtx := setupTestContext()
+	testKey := "content-type-test"
+
+	// Create test cases for different content types
+	testCases := []struct {
+		name        string
+		url         string
+		contentType string
+		expected    string // expected extension
+	}{
+		{
+			name:        "URL with extension",
+			url:         "http://example.com/image.png",
+			contentType: "image/png",
+			expected:    ".png",
+		},
+		{
+			name:        "No extension, JPEG content type",
+			url:         "http://example.com/image",
+			contentType: "image/jpeg",
+			expected:    ".jpg",
+		},
+		{
+			name:        "No extension, PNG content type",
+			url:         "http://example.com/image",
+			contentType: "image/png",
+			expected:    ".png",
+		},
+		{
+			name:        "No extension, GIF content type",
+			url:         "http://example.com/image",
+			contentType: "image/gif",
+			expected:    ".gif",
+		},
+		{
+			name:        "No extension, WebP content type",
+			url:         "http://example.com/image",
+			contentType: "image/webp",
+			expected:    ".webp",
+		},
+		{
+			name:        "No extension, unknown content type",
+			url:         "http://example.com/image",
+			contentType: "application/octet-stream",
+			expected:    ".jpg", // Default to jpg
+		},
+	}
+
+	for i, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use a unique key for each test case
+			testKeyWithIndex := fmt.Sprintf("%s-%d", testKey, i)
+			testImageData := []byte("test image data")
+
+			// Mock HTTP response
+			mockResp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       ioutil.NopCloser(bytes.NewReader(testImageData)),
+				Header:     http.Header{"Content-Type": {tc.contentType}},
+			}
+
+			// Set up mock
+			mockClient.ExpectedCalls = nil
+			mockClient.On("Do", mock.Anything).Return(mockResp, nil)
+
+			// Download the image
+			filePath, err := cache.GetOrDownloadImage(testCtx, tc.url, testKeyWithIndex)
+
+			// Assertions
+			assert.NoError(t, err, "Download should not fail")
+			assert.Contains(t, filePath, tc.expected, "File path should have the correct extension")
+
+			// Verify file exists and has correct content
+			fileData, err := ioutil.ReadFile(filePath)
+			assert.NoError(t, err, "Should be able to read the file")
+			assert.Equal(t, testImageData, fileData, "File content should match test data")
+		})
+	}
+}
+
+func TestCacheMapImages_Errors(t *testing.T) {
+	// Create test environment
+	cache, tmpDir, mockClient := createTestCache(t)
+	defer os.RemoveAll(tmpDir)
+	defer cache.Shutdown()
+
+	testCtx := setupTestContext()
+
+	// Test case with download error
+	maps := []domain.Map{
+		{
+			UUID:        "error-map",
+			DisplayName: "Error Map",
+			Splash:      "http://example.com/error.jpg",
+		},
+	}
+
+	// Mock HTTP client to return error
+	mockClient.On("Do", mock.Anything).Return(&http.Response{}, errors.New("download error"))
+
+	// Try to process maps
+	processedMaps, err := cache.CacheMapImages(testCtx, maps)
+
+	// For CacheMapImages, errors during download should be logged but not returned
+	assert.NoError(t, err, "CacheMapImages should not return the download error")
+	assert.Len(t, processedMaps, 1, "Should still return processed maps")
+
+	// The URL should still be replaced with an endpoint, even if download failed
+	assert.Contains(t, processedMaps[0].Splash, "/api/cache/", "URL should be replaced even if download failed")
+
+	// Verify mock was called
+	mockClient.AssertCalled(t, "Do", mock.Anything)
+}
+
+// Variable to allow mocking of os.MkdirAll

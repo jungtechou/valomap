@@ -80,13 +80,28 @@ func TestRegisterAPI(t *testing.T) {
 	// Create router
 	router := ProvideRouteV1(handler1)
 
-	// Register routes
-	router.RegisterAPI(engine)
-
-	// Since we can't easily test if the routes were registered correctly without making requests,
-	// we'll just check that the function doesn't panic
+	// Register routes - this should not panic
 	assert.NotPanics(t, func() {
 		router.RegisterAPI(engine)
+	})
+
+	// Create a new router with different routes to test multiple registrations
+	handler2 := &mockHandler{
+		routes: []handler.RouteInfo{
+			{
+				Method:      http.MethodGet,
+				Path:        "/test2",
+				Middlewares: []gin.HandlerFunc{},
+				Handler:     func(c *gin.Context) { c.String(http.StatusOK, "test2") },
+			},
+		},
+	}
+
+	router2 := ProvideRouteV1(handler2)
+
+	// This should not panic either
+	assert.NotPanics(t, func() {
+		router2.RegisterAPI(engine)
 	})
 }
 

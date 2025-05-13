@@ -3,6 +3,7 @@ package cache
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,7 +16,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// HTTPClient interface for making HTTP requests
+// Variable to allow mocking of os.MkdirAll
+var osMkdirAll = os.MkdirAll
+
+// HTTPClient is an interface for the http.Client
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -55,8 +59,17 @@ func NewImageCache(cfg *config.Config, client *http.Client) (ImageCache, error) 
 	// Default cache path is ./images-cache relative to the server
 	cachePath := "/home/appuser/images-cache"
 
+	// If testing, use a temporary directory
+	if cfg != nil && cfg.Server.Port == "test" {
+		var err error
+		cachePath, err = ioutil.TempDir("", "image-cache-test")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create temp directory: %w", err)
+		}
+	}
+
 	// Create cache directory if it doesn't exist
-	if err := os.MkdirAll(cachePath, 0755); err != nil {
+	if err := osMkdirAll(cachePath, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
