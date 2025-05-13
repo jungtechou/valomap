@@ -1,6 +1,68 @@
+# Generated files
 *wire_gen.go*
 main
 *log.html*
 *report.html*
 *output.xml*
+
+# IDE/Editor folders
 .vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Binaries and executables
+*.exe
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+
+# Dependency directories
+/node_modules/
+/vendor/
+
+# Environment files
+.env
+.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+
+# Logs
+/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+/build/
+/out/
+/coverage/
+.coverage
+*.coverage.*
+
+# Test output
+acme.json
+*test-output*/
+*.test.xml
+junit*.xml
+test-results/
+test_results/
+coverage.out
+__snapshots__/
+
+# Cache
+images-cache/
+**/images-cache/
+
+# Temporary files
+/tmp/
+/temp/
+
+# Exception rules
+!/**/.gitkeep
+!.gitkeep
