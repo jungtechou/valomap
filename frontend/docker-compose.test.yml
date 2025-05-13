@@ -1,0 +1,28 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./test-results:/app/test-results
+    environment:
+      - CI=true
+      - TEST_TYPE=unit
+
+  test-coverage:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./coverage:/app/coverage
+    environment:
+      - CI=true
+      - TEST_TYPE=coverage
+
+  test-perf:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - CI=true
+      - TEST_TYPE=perf

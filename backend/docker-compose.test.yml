@@ -1,0 +1,36 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./coverage_report:/app/coverage_report
+    command: ["all"]
+
+  test-unit:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["unit"]
+
+  test-coverage:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./coverage_report:/app/coverage_report
+    command: ["coverage"]
+
+  test-benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./benchmark_results.txt:/app/benchmark_results.txt
+    command: ["benchmark"]
+
+  test-race:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["race"]
