@@ -5,7 +5,7 @@
 DOCKER_COMPOSE = COMPOSE_BAKE=true docker compose
 DOCKER = docker
 NETWORK_NAME = web
-TEST_RESULTS_DIR = test_results
+TRAEFIK_ACME_JSON = traefik/acme.json
 
 # Command line argument parsing
 ifeq (test,$(firstword $(MAKECMDGOALS)))
@@ -25,21 +25,48 @@ endif
 #----------------------------------------------
 # Main targets
 #----------------------------------------------
-.PHONY: setup build deploy test test-coverage benchmark-test view-coverage help ensure-network
+.PHONY: traefik setup build deploy test test-coverage benchmark-test view-coverage help ensure-network
+
+traefik: ensure-network
+	@echo "Setting up Traefik..."
+	@touch $(TRAEFIK_ACME_JSON)
+	@chmod 600 $(TRAEFIK_ACME_JSON)
+
+	@echo "Creating admin user for Traefik dashboard"
+	@echo "Please enter a password for the Traefik dashboard:"
+	@stty -echo; read PASSWORD; stty echo
+
+	@echo "Hashing password..."
+	HASHED_PASSWORD=$$(docker run --rm httpd:alpine htpasswd -nbB admin "$$PASSWORD" | cut -d ":" -f 2)
+
+	@echo "Update the docker-compose.yml file with the hashed password"
+	@sed -i "s|\$apr1\$70hN10X7\$3QbzMaVnA3pagO1OJl1o90|$HASHED_PASSWORD|g" docker-compose.yml
+
+	@echo "Please enter your email address for Let's Encrypt notifications:"
+	@read EMAIL
+	@sed -i "s|your-email@example.com|$EMAIL|g" traefik/traefik.yml
+
+	@echo "Setup completed successfully!"
 
 # Setup: Prepare environment and dependencies in Docker
 setup: ensure-network
 	@echo "Setting up project in Docker..."
-	@if [ ! -f ".env" ]; then \
-		echo "Creating default .env file..."; \
-		cp .env.example .env; \
+#	@if [ ! -f ".env" ]; then \
+#		echo "Creating default .env file..."; \
+#		cp .env.example .env; \
+#	fi
+	@if [ "$(TEST_ARGS)" = "frontend" ]; then \
+		$(MAKE) -C frontend test; \
+	elif [ "$(TEST_ARGS)" = "backend" ]; then \
+		$(MAKE) -C backend test; \
+	else \
+		@echo "Building setup containers..." \
+		@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml build setup-frontend setup-backend \
+		@echo "Running setup for frontend..." \
+		@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml run --rm setup-frontend \
+		@echo "Running setup for backend..." \
+		@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml run --rm setup-backend \
 	fi
-	@echo "Building setup containers..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml build setup-frontend setup-backend
-	@echo "Running setup for frontend..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml run --rm setup-frontend
-	@echo "Running setup for backend..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml run --rm setup-backend
 	@echo "Setup complete!"
 
 # Build all components in Docker

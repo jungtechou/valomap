@@ -1,0 +1,30 @@
+services:
+  # Frontend setup container
+  setup-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: valorant-map-picker-setup-frontend
+    volumes:
+      - ./frontend:/app
+    command: npm install
+    networks:
+      - web
+
+  # Backend setup container
+  setup-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: valorant-map-picker-setup-backend
+    volumes:
+      - ./backend:/app/backend
+    command: go mod tidy
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
