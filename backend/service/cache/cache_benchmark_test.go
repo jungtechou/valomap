@@ -2,6 +2,7 @@ package cache
 
 import (
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"testing"
@@ -165,6 +166,8 @@ func BenchmarkPrewarmCache(b *testing.B) {
 	defer os.RemoveAll(tmpDir)
 	defer cache.Shutdown()
 
+	// Get the concrete implementation to access internal fields
+	cacheImpl := cache.(*imageCache)
 	testCtx := setupBenchContext()
 	testImageData := []byte("test image data")
 
@@ -175,14 +178,19 @@ func BenchmarkPrewarmCache(b *testing.B) {
 		url := "http://example.com/img" + string(rune(i)) + ".jpg"
 		urlMap[key] = url
 
-		// Setup mocks for each URL
-		mockResp := createMockImageResponse(testImageData, "image/jpeg")
-		mockClient.On("Do", mock.Anything).Return(mockResp, nil)
+		// Setup mocks for each URL with callback return to avoid race conditions
+		mockClient.On("Do", mock.Anything).Return(func(req *http.Request) *http.Response {
+			return createMockImageResponse(testImageData, "image/jpeg")
+		}, func(req *http.Request) error {
+			return nil
+		})
 	}
 
 	// Run the benchmark
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		cache.PrewarmCache(testCtx, urlMap)
+		// Ensure downloads complete before next iteration
+		cacheImpl.wg.Wait()
 	}
 }

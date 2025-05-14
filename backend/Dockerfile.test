@@ -3,63 +3,15 @@ FROM golang:1.24-alpine
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev bash && \
+RUN apk add --no-cache make git ca-certificates tzdata gcc musl-dev bash && \
     update-ca-certificates
-
-# Copy the Go modules manifests
-COPY go.mod go.sum ./
-
-# Download dependencies
-RUN go mod download
 
 # Copy the source code
 COPY . .
 
-# Create test runner script
-RUN echo '#!/bin/bash' > /app/run_tests.sh && \
-    echo 'set -e' >> /app/run_tests.sh && \
-    echo 'echo "==> Running backend tests: $1"' >> /app/run_tests.sh && \
-    echo 'case "$1" in' >> /app/run_tests.sh && \
-    echo '    unit)' >> /app/run_tests.sh && \
-    echo '        echo "==> Running Unit Tests"' >> /app/run_tests.sh && \
-    echo '        go test -v ./...' >> /app/run_tests.sh && \
-    echo '        ;;' >> /app/run_tests.sh && \
-    echo '    coverage)' >> /app/run_tests.sh && \
-    echo '        echo "==> Running Tests with Coverage"' >> /app/run_tests.sh && \
-    echo '        PACKAGES=$(go list ./... | grep -v "github.com/jungtechou/valomap/cmd" | grep -v "github.com/jungtechou/valomap/di")' >> /app/run_tests.sh && \
-    echo '        go test -coverprofile=coverage.out $PACKAGES' >> /app/run_tests.sh && \
-    echo '        mkdir -p coverage_report' >> /app/run_tests.sh && \
-    echo '        go tool cover -html=coverage.out -o coverage_report/coverage.html' >> /app/run_tests.sh && \
-    echo '        go tool cover -func=coverage.out | tee coverage_report/coverage_summary.txt' >> /app/run_tests.sh && \
-    echo '        ;;' >> /app/run_tests.sh && \
-    echo '    benchmark)' >> /app/run_tests.sh && \
-    echo '        echo "==> Running Benchmark Tests"' >> /app/run_tests.sh && \
-    echo '        go test -run=^$ -bench=. -benchmem ./... | tee benchmark_results.txt' >> /app/run_tests.sh && \
-    echo '        ;;' >> /app/run_tests.sh && \
-    echo '    race)' >> /app/run_tests.sh && \
-    echo '        echo "==> Running Race Condition Tests"' >> /app/run_tests.sh && \
-    echo '        CGO_ENABLED=1 go test -race -short ./...' >> /app/run_tests.sh && \
-    echo '        ;;' >> /app/run_tests.sh && \
-    echo '    all)' >> /app/run_tests.sh && \
-    echo '        echo "==> Running All Tests"' >> /app/run_tests.sh && \
-    echo '        go test -v ./...' >> /app/run_tests.sh && \
-    echo '        PACKAGES=$(go list ./... | grep -v "github.com/jungtechou/valomap/cmd" | grep -v "github.com/jungtechou/valomap/di")' >> /app/run_tests.sh && \
-    echo '        go test -coverprofile=coverage.out $PACKAGES' >> /app/run_tests.sh && \
-    echo '        mkdir -p coverage_report' >> /app/run_tests.sh && \
-    echo '        go tool cover -html=coverage.out -o coverage_report/coverage.html' >> /app/run_tests.sh && \
-    echo '        go tool cover -func=coverage.out | tee coverage_report/coverage_summary.txt' >> /app/run_tests.sh && \
-    echo '        go test -run=^$ -bench=. -benchmem ./... | tee benchmark_results.txt' >> /app/run_tests.sh && \
-    echo '        CGO_ENABLED=1 go test -race -short ./...' >> /app/run_tests.sh && \
-    echo '        ;;' >> /app/run_tests.sh && \
-    echo '    *)' >> /app/run_tests.sh && \
-    echo '        echo "Unknown test type: $1"' >> /app/run_tests.sh && \
-    echo '        exit 1' >> /app/run_tests.sh && \
-    echo '        ;;' >> /app/run_tests.sh && \
-    echo 'esac' >> /app/run_tests.sh && \
-    chmod +x /app/run_tests.sh
+# Download dependencies
+RUN go mod download
 
-# Set the entrypoint to run the test script
-ENTRYPOINT ["/app/run_tests.sh"]
+# ENTRYPOINT ["/usr/bin/make"]
 
-# The default command is to run all tests
-CMD ["all"]
+# CMD [ "test" ]

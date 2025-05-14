@@ -1,3 +1,39 @@
+# Development stage for local development and setup
+FROM node:18-alpine AS development
+
+WORKDIR /app
+
+# Copy package.json and install dependencies
+COPY package*.json ./
+
+# We'll mount the source code as a volume in docker-compose
+
+# Test stage for running tests
+FROM node:18-alpine AS test
+
+WORKDIR /app
+
+# Copy package.json and install dependencies
+COPY package*.json ./
+RUN npm install
+
+# We'll mount the source code as a volume in docker-compose
+
+# End-to-end test stage
+FROM node:18-alpine AS e2e
+
+WORKDIR /app
+
+# Install Cypress dependencies
+RUN apk add --no-cache xvfb ttf-freefont chromium
+
+# Copy package.json and install dependencies including Cypress
+COPY package*.json ./
+RUN npm install
+
+# We'll mount the source code as a volume in docker-compose
+
+# Production build stage
 FROM node:18-alpine AS build
 
 WORKDIR /app

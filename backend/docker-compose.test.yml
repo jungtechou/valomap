@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile.test
     volumes:
       - ./coverage_report:/app/coverage_report
-    command: ["all"]
+    command: ["make", "test"]
 
   test-unit:
     build:
       context: .
       dockerfile: Dockerfile.test
-    command: ["unit"]
+    command: ["make", "test-unit"]
 
   test-coverage:
     build:
@@ -19,7 +19,7 @@ services:
       dockerfile: Dockerfile.test
     volumes:
       - ./coverage_report:/app/coverage_report
-    command: ["coverage"]
+    command: ["make", "test-coverage"]
 
   test-benchmark:
     build:
@@ -27,10 +27,10 @@ services:
       dockerfile: Dockerfile.test
     volumes:
       - ./benchmark_results.txt:/app/benchmark_results.txt
-    command: ["benchmark"]
+    command: ["make", "test-benchmark"]
 
   test-race:
     build:
       context: .
       dockerfile: Dockerfile.test
-    command: ["race"]
+    command: ["make", "test-race"]

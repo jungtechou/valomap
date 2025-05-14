@@ -1,135 +1,92 @@
-# Backend Makefile
-# Commands specific to the backend service
+# Backend Go Tests Makefile
 
 # Variables
-GO = go
-DOCKER_COMPOSE = COMPOSE_BAKE=true docker compose
-TEST_RESULTS_DIR = ../test_results
-SWAG = $(shell command -v swag 2> /dev/null)
+GOTEST = go test
+GOCMD = go
+TEST_DIR = ./...
+COVERAGE_OUT = coverage.out
+COVERAGE_HTML = coverage_report/coverage.html
+COVERAGE_SUMMARY = coverage_report/coverage_summary.txt
+BENCHMARK_RESULTS = benchmark_results.txt
+# Exclude packages that shouldn't be included in coverage
+PACKAGES = $(shell go list $(TEST_DIR) | grep -v "github.com/jungtechou/valomap/cmd" | grep -v "github.com/jungtechou/valomap/di")
 
-#----------------------------------------------
-# Main targets
-#----------------------------------------------
-.PHONY: setup clean dev build test test-docker test-docker-unit test-docker-coverage test-docker-benchmark test-docker-race swagger
+.PHONY: test test-unit test-coverage test-benchmark test-race test-all clean view-coverage
 
-# Setup the backend
-setup:
-	@echo "Setting up backend..."
-	@go mod tidy
-	@chmod +x test.sh
+# Default target: run all tests
+test: test-all
 
-# Clean backend resources
-clean:
-	@echo "Cleaning backend resources..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down 2>/dev/null || true
-	@sleep 2  # Give Docker time to release resources
-	@rm -rf coverage_report || true
-	@rm -f coverage.out benchmark_results.txt || true
+# Run unit tests only
+test-unit:
+	@echo "==> Running Unit Tests"
+	@$(GOTEST) -v $(TEST_DIR)
+
+# Run tests with coverage
+test-coverage:
+	@echo "==> Running Tests with Coverage"
 	@mkdir -p coverage_report
-	@$(GO) clean
+	@$(GOTEST) -coverprofile=$(COVERAGE_OUT) $(PACKAGES)
+	@$(GOCMD) tool cover -html=$(COVERAGE_OUT) -o $(COVERAGE_HTML)
+	@$(GOCMD) tool cover -func=$(COVERAGE_OUT) | tee $(COVERAGE_SUMMARY)
+	@echo "Coverage report generated at $(COVERAGE_HTML)"
 
-# Build backend
-build:
-	@echo "Building backend..."
-	@$(GO) build -o bin/server ./cmd/main.go
+# Run benchmark tests
+test-benchmark:
+	@echo "==> Running Benchmark Tests"
+	@$(GOTEST) -run=^$ -bench=. -benchmem $(TEST_DIR) | tee $(BENCHMARK_RESULTS)
+	@echo "Benchmark results saved to $(BENCHMARK_RESULTS)"
 
-# Run backend in development mode
-dev:
-	@echo "Starting backend in development mode..."
-	@$(GO) run ./cmd/main.go
+# Run race condition tests
+test-race:
+	@echo "==> Running Race Condition Tests"
+	@CGO_ENABLED=1 $(GOTEST) -race -short $(TEST_DIR)
 
-#----------------------------------------------
-# Test targets
-#----------------------------------------------
+# Run all types of tests
+test-all:
+	@echo "==> Running All Tests"
+	@$(GOTEST) -v $(TEST_DIR)
+	@mkdir -p coverage_report
+	@$(GOTEST) -coverprofile=$(COVERAGE_OUT) $(PACKAGES)
+	@$(GOCMD) tool cover -html=$(COVERAGE_OUT) -o $(COVERAGE_HTML)
+	@$(GOCMD) tool cover -func=$(COVERAGE_OUT) | tee $(COVERAGE_SUMMARY)
+	@$(GOTEST) -run=^$ -bench=. -benchmem $(TEST_DIR) | tee $(BENCHMARK_RESULTS)
+	@CGO_ENABLED=1 $(GOTEST) -race -short $(TEST_DIR)
+	@echo "All tests completed!"
 
-# Run backend tests in Docker (default target)
-test: test-docker
-
-# Run all backend tests in Docker
-test-docker:
-	@echo "Running backend tests in Docker..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans test
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down
-
-# Run backend unit tests in Docker
-test-docker-unit:
-	@echo "Running backend unit tests in Docker..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans test-unit
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down
-
-# Run backend coverage tests in Docker
-test-docker-coverage:
-	@echo "Running backend coverage tests in Docker..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans test-coverage
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down
-
-# Run backend benchmark tests in Docker
-test-docker-benchmark:
-	@echo "Running backend benchmark tests in Docker..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans test-benchmark
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down
-
-# Run backend race condition tests in Docker
-test-docker-race:
-	@echo "Running backend race condition tests in Docker..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans test-race
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down
-
-# View test coverage results
-test-coverage-view:
-	@echo "Opening test coverage reports..."
-	@[ -f coverage_report/coverage.html ] && open coverage_report/coverage.html || echo "Error: Coverage report not found. Run test-docker-coverage first."
-	@echo "Coverage reports available in coverage_report directory"
-
-#----------------------------------------------
-# Documentation targets
-#----------------------------------------------
-
-# Generate Swagger documentation
-swagger:
-	@echo "Generating Swagger documentation..."
-	@if [ -z "$(SWAG)" ]; then \
-		echo "Installing swag..."; \
-		go install github.com/swaggo/swag/cmd/swag@latest; \
+# View coverage report in the default browser (works on Linux, macOS, and Windows)
+view-coverage:
+	@echo "Opening coverage report..."
+	@if [ -f "$(COVERAGE_HTML)" ]; then \
+		case "$$(uname -s)" in \
+			Linux*) xdg-open $(COVERAGE_HTML) ;; \
+			Darwin*) open $(COVERAGE_HTML) ;; \
+			CYGWIN*|MINGW*|MSYS*) start $(COVERAGE_HTML) ;; \
+			*) echo "Unsupported OS. Please open $(COVERAGE_HTML) manually." ;; \
+		esac; \
+	else \
+		echo "Coverage report not found. Run 'make test-coverage' first."; \
 	fi
-	@echo "Running swag init from $$(pwd)"
-	@swag init -g cmd/main.go -o docs
-	@echo "Swagger documentation generated successfully!"
 
-#----------------------------------------------
-# Helper targets
-#----------------------------------------------
-.PHONY: help ensure-test-dir stop-tests
+# Clean test artifacts
+clean:
+	@echo "Cleaning test artifacts..."
+	@rm -f $(COVERAGE_OUT)
+	@rm -rf coverage_report
+	@rm -f $(BENCHMARK_RESULTS)
+	@echo "Clean complete!"
 
-# Ensure test directory exists
-ensure-test-dir:
-	@mkdir -p $(TEST_RESULTS_DIR)
-
-# Stop test containers
-stop-tests:
-	@echo "Stopping test containers..."
-	@$(DOCKER_COMPOSE) -f docker-compose.test.yml down 2>/dev/null || true
-	@sleep 2  # Give Docker time to release resources
-
-# Help command
+# Help information
 help:
-	@echo "Backend Makefile - Available commands:"
+	@echo "Backend Go Tests Makefile"
 	@echo ""
-	@echo "Main commands:"
-	@echo "  make setup         - Setup backend dependencies"
-	@echo "  make build         - Build backend binaries"
-	@echo "  make clean         - Clean backend resources"
-	@echo "  make dev           - Run backend in development mode"
+	@echo "Available targets:"
+	@echo "  make test          - Run all tests (same as test-all)"
+	@echo "  make test-unit     - Run only unit tests"
+	@echo "  make test-coverage - Run tests with coverage reporting"
+	@echo "  make test-benchmark - Run benchmark tests"
+	@echo "  make test-race     - Run race condition tests"
+	@echo "  make test-all      - Run all types of tests"
+	@echo "  make view-coverage - Open coverage report in browser"
+	@echo "  make clean         - Clean test artifacts"
+	@echo "  make help          - Show this help message"
 	@echo ""
-	@echo "Test commands (Docker only):"
-	@echo "  make test          - Run backend tests in Docker"
-	@echo "  make test-docker   - Run all backend tests in Docker"
-	@echo "  make test-docker-unit - Run backend unit tests in Docker"
-	@echo "  make test-docker-coverage - Run backend coverage tests in Docker"
-	@echo "  make test-docker-benchmark - Run backend benchmark tests in Docker"
-	@echo "  make test-docker-race - Run backend race condition tests in Docker"
-	@echo "  make test-coverage-view - View test coverage reports"
-	@echo "  make stop-tests    - Stop all test containers"
-	@echo ""
-	@echo "Documentation commands:"
-	@echo "  make swagger       - Generate Swagger documentation"

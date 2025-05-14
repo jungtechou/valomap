@@ -1,4 +1,26 @@
-# Build stage
+# Development stage for local development and setup
+FROM golang:1.24-alpine AS development
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev && \
+    update-ca-certificates
+
+# We'll mount the source code as a volume
+
+# Test stage for running tests
+FROM golang:1.24-alpine AS test
+
+WORKDIR /app
+
+# Install test dependencies
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev && \
+    update-ca-certificates
+
+# We'll mount the source code as a volume
+
+# Build stage for production
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
@@ -25,8 +47,8 @@ RUN swag init -g cmd/main.go -o docs
 # Build the application with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/valorant-map-picker ./cmd/main.go
 
-# Final stage
-FROM alpine:3.18
+# Final stage for production
+FROM alpine:3.19
 
 # Import from builder
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo

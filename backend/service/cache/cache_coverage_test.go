@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/jungtechou/valomap/config"
 	domain "github.com/jungtechou/valomap/domain/map"
@@ -36,6 +35,13 @@ type MockHTTPClient2 struct {
 
 func (m *MockHTTPClient2) Do(req *http.Request) (*http.Response, error) {
 	args := m.Called(req)
+
+	// Handle function callbacks if they are used
+	if fn, ok := args.Get(0).(func(*http.Request) *http.Response); ok {
+		return fn(req), args.Get(1).(func(*http.Request) error)(req)
+	}
+
+	// Handle regular returns
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -306,22 +312,35 @@ func TestPrewarmCache_Coverage(t *testing.T) {
 	// Create mock HTTP client
 	mockClient := new(MockHTTPClient2)
 
-	// Setup successful response for image download
-	successResp := &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(bytes.NewReader([]byte("fake image data"))),
-		Header:     make(http.Header),
-	}
-	successResp.Header.Set("Content-Type", "image/jpeg")
-
-	// Configure mock client behavior for multiple URLs
+	// Setup successful response for image download using function return values
+	// to avoid race conditions
 	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 		return req.URL.String() == "https://example.com/image1.jpg"
-	})).Return(successResp, nil)
+	})).Return(func(req *http.Request) *http.Response {
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte("fake image data"))),
+			Header:     make(http.Header),
+		}
+		resp.Header.Set("Content-Type", "image/jpeg")
+		return resp
+	}, func(req *http.Request) error {
+		return nil
+	})
 
 	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 		return req.URL.String() == "https://example.com/image2.png"
-	})).Return(successResp, nil)
+	})).Return(func(req *http.Request) *http.Response {
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte("fake image data"))),
+			Header:     make(http.Header),
+		}
+		resp.Header.Set("Content-Type", "image/jpeg")
+		return resp
+	}, func(req *http.Request) error {
+		return nil
+	})
 
 	// Setup error for one URL
 	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
@@ -342,16 +361,19 @@ func TestPrewarmCache_Coverage(t *testing.T) {
 		go cache.downloadWorker()
 	}
 
+	// Ensure cache is shut down after test
+	defer cache.Shutdown()
+
 	// Create URL map with file that already exists to test filesystem cache detection
 	existingFile := filepath.Join(tempDir, "existing.jpg")
 	err = ioutil.WriteFile(existingFile, []byte("existing image"), 0644)
 	require.NoError(t, err)
 
 	urlMap := map[string]string{
-		"image1":    "https://example.com/image1.jpg",
-		"image2":    "https://example.com/image2.png",
-		"error":     "https://example.com/error.jpg",
-		"existing":  "https://example.com/existing.jpg",
+		"image1":   "https://example.com/image1.jpg",
+		"image2":   "https://example.com/image2.png",
+		"error":    "https://example.com/error.jpg",
+		"existing": "https://example.com/existing.jpg",
 	}
 
 	// Test PrewarmCache
@@ -359,18 +381,27 @@ func TestPrewarmCache_Coverage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Allow background downloads to complete
-	time.Sleep(100 * time.Millisecond)
 	cache.wg.Wait()
 
-	// Verify images were cached
+	// Verify images were cached using safe read locking
 	cache.mutex.RLock()
-	assert.Contains(t, cache.cachedImages, "image1")
-	assert.Contains(t, cache.cachedImages, "image2")
-	assert.Contains(t, cache.cachedImages, "existing")
+	hasImage1 := false
+	hasImage2 := false
+	hasExisting := false
+	if _, ok := cache.cachedImages["image1"]; ok {
+		hasImage1 = true
+	}
+	if _, ok := cache.cachedImages["image2"]; ok {
+		hasImage2 = true
+	}
+	if _, ok := cache.cachedImages["existing"]; ok {
+		hasExisting = true
+	}
 	cache.mutex.RUnlock()
 
-	// Shutdown cache
-	cache.Shutdown()
+	assert.True(t, hasImage1, "image1 should be cached")
+	assert.True(t, hasImage2, "image2 should be cached")
+	assert.True(t, hasExisting, "existing image should be cached")
 
 	// Verify expectations
 	mockClient.AssertExpectations(t)
