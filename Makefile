@@ -7,13 +7,28 @@ DOCKER = docker
 NETWORK_NAME = web
 TEST_RESULTS_DIR = test_results
 
+# Command line argument parsing
+ifeq (test,$(firstword $(MAKECMDGOALS)))
+  # If the first goal is "test", we need to capture the second argument (if any)
+  TEST_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  # ...and turn them into do-nothing targets
+  $(eval $(TEST_ARGS):;@:)
+endif
+
+ifeq (dev,$(firstword $(MAKECMDGOALS)))
+  # If the first goal is "dev", we need to capture the second argument (if any)
+  DEV_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  # ...and turn them into do-nothing targets
+  $(eval $(DEV_ARGS):;@:)
+endif
+
 #----------------------------------------------
 # Main targets
 #----------------------------------------------
-.PHONY: setup build deploy test test-coverage benchmark-test view-coverage help ensure-network ensure-test-dir
+.PHONY: setup build deploy test test-coverage benchmark-test view-coverage help ensure-network
 
 # Setup: Prepare environment and dependencies in Docker
-setup: ensure-network ensure-test-dir
+setup: ensure-network
 	@echo "Setting up project in Docker..."
 	@if [ ! -f ".env" ]; then \
 		echo "Creating default .env file..."; \
@@ -42,50 +57,15 @@ deploy: ensure-network
 	@COMPOSE_PROFILES=production $(DOCKER_COMPOSE) up -d
 	@echo "Deployment complete!"
 
-# Run all tests in Docker
-test: ensure-network ensure-test-dir
-	@echo "Running all tests in Docker..."
-	@echo "Running frontend tests..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans frontend-test
-	@echo "Running backend tests..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans backend-test
-	@echo "Running end-to-end tests..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans e2e-test
-	@echo "Cleaning up test containers..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml down
-	@echo "All tests completed!"
-
-# Run tests with detailed coverage reports
-test-coverage: ensure-network ensure-test-dir
-	@echo "Running tests with coverage reporting in Docker..."
-	@echo "Running frontend coverage tests..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans frontend-coverage
-	@echo "Running backend coverage tests..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans backend-coverage
-	@echo "Cleaning up test containers..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml down
-	@echo "Coverage tests completed! Use 'make view-coverage' to see reports."
-
-# Run benchmark tests
-benchmark-test: ensure-network ensure-test-dir
-	@echo "Running benchmark tests in Docker..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml up --build --abort-on-container-exit --remove-orphans backend-benchmark
-	@echo "Cleaning up benchmark containers..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.test.yml down
-	@echo "Benchmark tests completed!"
-
-# View coverage reports
-view-coverage:
-	@echo "Opening coverage reports..."
-	@if [ -d "$(TEST_RESULTS_DIR)/frontend-coverage" ]; then \
-		echo "Frontend coverage report at $(TEST_RESULTS_DIR)/frontend-coverage/index.html"; \
-	else \
-		echo "Frontend coverage report not found. Run 'make test-coverage' first."; \
+# Run tests with optional component
+test:
+	@echo "Running tests..."
+	@if [ "$(TEST_ARGS)" = "frontend" ]; then \
+		$(MAKE) -C frontend test; \
 	fi
-	@if [ -d "$(TEST_RESULTS_DIR)/backend-coverage" ]; then \
-		echo "Backend coverage report at $(TEST_RESULTS_DIR)/backend-coverage/index.html"; \
-	else \
-		echo "Backend coverage report not found. Run 'make test-coverage' first."; \
+
+	@if [ "$(TEST_ARGS)" = "backend" ]; then \
+		$(MAKE) -C backend test; \
 	fi
 
 #----------------------------------------------
@@ -95,13 +75,6 @@ view-coverage:
 # Ensure docker network exists
 ensure-network:
 	@docker network inspect $(NETWORK_NAME) >/dev/null 2>&1 || docker network create $(NETWORK_NAME)
-
-# Ensure test directory exists
-ensure-test-dir:
-	@mkdir -p $(TEST_RESULTS_DIR)
-	@mkdir -p $(TEST_RESULTS_DIR)/frontend-coverage
-	@mkdir -p $(TEST_RESULTS_DIR)/backend-coverage
-	@mkdir -p $(TEST_RESULTS_DIR)/benchmark
 
 # Help command
 help:

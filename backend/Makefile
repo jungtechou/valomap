@@ -4,17 +4,21 @@
 GOTEST = go test
 GOCMD = go
 TEST_DIR = ./...
-COVERAGE_OUT = coverage.out
-COVERAGE_HTML = coverage_report/coverage.html
-COVERAGE_SUMMARY = coverage_report/coverage_summary.txt
-BENCHMARK_RESULTS = benchmark_results.txt
+TEST_RESULTS_DIR = test_results
+COVERAGE_OUT = $(TEST_RESULTS_DIR)/coverage.out
+COVERAGE_HTML = $(TEST_RESULTS_DIR)/coverage.html
+COVERAGE_SUMMARY = $(TEST_RESULTS_DIR)/coverage_summary.txt
+BENCHMARK_RESULTS = $(TEST_RESULTS_DIR)/benchmark_results.txt
 # Exclude packages that shouldn't be included in coverage
 PACKAGES = $(shell go list $(TEST_DIR) | grep -v "github.com/jungtechou/valomap/cmd" | grep -v "github.com/jungtechou/valomap/di")
+DOCKER_COMPOSE = COMPOSE_BAKE=true docker compose
 
 .PHONY: test test-unit test-coverage test-benchmark test-race test-all clean view-coverage
 
 # Default target: run all tests
-test: test-all
+test:
+	@mkdir -pv $(TEST_RESULTS_DIR)
+	@$(DOCKER_COMPOSE) -f docker-compose.test.yml up --abort-on-container-exit --remove-orphans --build test
 
 # Run unit tests only
 test-unit:
@@ -24,7 +28,6 @@ test-unit:
 # Run tests with coverage
 test-coverage:
 	@echo "==> Running Tests with Coverage"
-	@mkdir -p coverage_report
 	@$(GOTEST) -coverprofile=$(COVERAGE_OUT) $(PACKAGES)
 	@$(GOCMD) tool cover -html=$(COVERAGE_OUT) -o $(COVERAGE_HTML)
 	@$(GOCMD) tool cover -func=$(COVERAGE_OUT) | tee $(COVERAGE_SUMMARY)
@@ -43,9 +46,9 @@ test-race:
 
 # Run all types of tests
 test-all:
-	@echo "==> Running All Tests"
+	@echo "==> Running All Backend Tests"
 	@$(GOTEST) -v $(TEST_DIR)
-	@mkdir -p coverage_report
+	@mkdir -p $(TEST_RESULTS_DIR)
 	@$(GOTEST) -coverprofile=$(COVERAGE_OUT) $(PACKAGES)
 	@$(GOCMD) tool cover -html=$(COVERAGE_OUT) -o $(COVERAGE_HTML)
 	@$(GOCMD) tool cover -func=$(COVERAGE_OUT) | tee $(COVERAGE_SUMMARY)
@@ -53,26 +56,10 @@ test-all:
 	@CGO_ENABLED=1 $(GOTEST) -race -short $(TEST_DIR)
 	@echo "All tests completed!"
 
-# View coverage report in the default browser (works on Linux, macOS, and Windows)
-view-coverage:
-	@echo "Opening coverage report..."
-	@if [ -f "$(COVERAGE_HTML)" ]; then \
-		case "$$(uname -s)" in \
-			Linux*) xdg-open $(COVERAGE_HTML) ;; \
-			Darwin*) open $(COVERAGE_HTML) ;; \
-			CYGWIN*|MINGW*|MSYS*) start $(COVERAGE_HTML) ;; \
-			*) echo "Unsupported OS. Please open $(COVERAGE_HTML) manually." ;; \
-		esac; \
-	else \
-		echo "Coverage report not found. Run 'make test-coverage' first."; \
-	fi
-
 # Clean test artifacts
 clean:
 	@echo "Cleaning test artifacts..."
-	@rm -f $(COVERAGE_OUT)
-	@rm -rf coverage_report
-	@rm -f $(BENCHMARK_RESULTS)
+	@rm -rfv $(TEST_RESULTS_DIR)
 	@echo "Clean complete!"
 
 # Help information
@@ -80,13 +67,12 @@ help:
 	@echo "Backend Go Tests Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make test          - Run all tests (same as test-all)"
+	@echo "  make test          - Run all tests in Docker container"
 	@echo "  make test-unit     - Run only unit tests"
 	@echo "  make test-coverage - Run tests with coverage reporting"
 	@echo "  make test-benchmark - Run benchmark tests"
 	@echo "  make test-race     - Run race condition tests"
 	@echo "  make test-all      - Run all types of tests"
-	@echo "  make view-coverage - Open coverage report in browser"
 	@echo "  make clean         - Clean test artifacts"
 	@echo "  make help          - Show this help message"
 	@echo ""

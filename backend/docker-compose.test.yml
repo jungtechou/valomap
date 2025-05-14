@@ -1,36 +1,75 @@
 services:
   test:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: golang:1.24-alpine
     volumes:
-      - ./coverage_report:/app/coverage_report
-    command: ["make", "test"]
+      - .:/app
+    working_dir: /app
+    environment:
+      - GO_ENV=test
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache make git ca-certificates tzdata gcc musl-dev bash &&
+        update-ca-certificates &&
+        go mod download &&
+        make test-all
 
   test-unit:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    command: ["make", "test-unit"]
+    image: golang:1.24-alpine
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - GO_ENV=test
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache make git ca-certificates tzdata gcc musl-dev bash &&
+        update-ca-certificates &&
+        go mod download &&
+        make test-unit
 
   test-coverage:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: golang:1.24-alpine
     volumes:
-      - ./coverage_report:/app/coverage_report
-    command: ["make", "test-coverage"]
+      - .:/app
+    working_dir: /app
+    environment:
+      - GO_ENV=test
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache make git ca-certificates tzdata gcc musl-dev bash &&
+        update-ca-certificates &&
+        go mod download &&
+        make test-coverage
 
   test-benchmark:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: golang:1.24-alpine
     volumes:
-      - ./benchmark_results.txt:/app/benchmark_results.txt
-    command: ["make", "test-benchmark"]
+      - .:/app
+    working_dir: /app
+    environment:
+      - GO_ENV=test
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache make git ca-certificates tzdata gcc musl-dev bash &&
+        update-ca-certificates &&
+        go mod download &&
+        make test-benchmark
 
   test-race:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    command: ["make", "test-race"]
+    image: golang:1.24-alpine
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - GO_ENV=test
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache make git ca-certificates tzdata gcc musl-dev bash &&
+        update-ca-certificates &&
+        go mod download &&
+        make test-race
