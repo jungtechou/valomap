@@ -23,6 +23,8 @@ main
 # Dependency directories
 /node_modules/
 /vendor/
+**/node_modules/
+**/vendor/
 
 # Environment files
 .env
@@ -48,9 +50,20 @@ coverage_report
 **/coverage_report/**
 .coverage
 *.coverage.*
+**/build/
+**/out/
+**/dist/
+
+# Go specific
+*.exe~
+*.test
+*.prof
+*.out
+/cmd/*/debug
+/cmd/*/debug.test
 
 # Test output
-acme.json
+*/acme.json
 *test-output*/
 *.test.xml
 junit*.xml
@@ -58,14 +71,37 @@ test-results/
 test_results/
 coverage.out
 __snapshots__/
+jest-junit.xml
 
 # Cache
 images-cache/
 **/images-cache/
+.npm
+.eslintcache
+.stylelintcache
 
 # Temporary files
 /tmp/
 /temp/
+*.tmp
+*.bak
+
+# Frontend specific
+.sass-cache/
+.parcel-cache/
+.cache/
+.next/
+.nuxt/
+*.tsbuildinfo
+public/hot
+
+# Backend specific
+/mock_*.go
+/_sandbox/
+
+# Docker
+docker-volumes/
+docker-compose.override.yml
 
 # Exception rules
 !/**/.gitkeep

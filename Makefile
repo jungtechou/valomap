@@ -1,7 +1,5 @@
 # Valorant Map Picker Makefile
-# Simplified version with Docker-only operations
 
-# Variables
 DOCKER_COMPOSE = COMPOSE_BAKE=true docker compose
 DOCKER = docker
 NETWORK_NAME = web
@@ -15,19 +13,19 @@ ifeq (test,$(firstword $(MAKECMDGOALS)))
   $(eval $(TEST_ARGS):;@:)
 endif
 
-ifeq (dev,$(firstword $(MAKECMDGOALS)))
-  # If the first goal is "dev", we need to capture the second argument (if any)
-  DEV_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+ifeq (deploy,$(firstword $(MAKECMDGOALS)))
+  # If the first goal is "deploy", we need to capture the second argument (if any)
+  DEPLOY_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   # ...and turn them into do-nothing targets
-  $(eval $(DEV_ARGS):;@:)
+  $(eval $(DEPLOY_ARGS):;@:)
 endif
 
-#----------------------------------------------
-# Main targets
-#----------------------------------------------
-.PHONY: traefik setup build deploy test test-coverage benchmark-test view-coverage help ensure-network
+.PHONY: setup deploy test help
 
-traefik: ensure-network
+setup:
+	@echo "Ensuring external network..."
+	@docker network inspect $(NETWORK_NAME) >/dev/null 2>&1 || docker network create $(NETWORK_NAME)
+
 	@echo "Setting up Traefik..."
 	@touch $(TRAEFIK_ACME_JSON)
 	@chmod 600 $(TRAEFIK_ACME_JSON)
@@ -48,70 +46,39 @@ traefik: ensure-network
 
 	@echo "Setup completed successfully!"
 
-# Setup: Prepare environment and dependencies in Docker
-setup: ensure-network
-	@echo "Setting up project in Docker..."
-#	@if [ ! -f ".env" ]; then \
-#		echo "Creating default .env file..."; \
-#		cp .env.example .env; \
-#	fi
-	@if [ "$(TEST_ARGS)" = "frontend" ]; then \
+deploy: setup
+	@if [ -z "$(TEST_ARGS)" ]; then \
+		@echo "Deploying all components to production..."; \
+		@$(DOCKER_COMPOSE) down --remove-orphans; \
+		@$(DOCKER_COMPOSE) -f docker-compose.yml up --remove-orphans; \
+	else \
+		@echo "Deploying $(TEST_ARGS) to production ..."; \
+		@$(DOCKER_COMPOSE) rm $(TEST_ARGS) -f; \
+		@$(DOCKER_COMPOSE) -f docker-compose.yml up --remove-orphans --build $(TEST_ARGS); \
+	fi
+
+test:
+	@if [ -z "$(TEST_ARGS)" ]; then \
+		@echo "Running all tests..."; \
 		$(MAKE) -C frontend test; \
-	elif [ "$(TEST_ARGS)" = "backend" ]; then \
 		$(MAKE) -C backend test; \
 	else \
-		@echo "Building setup containers..." \
-		@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml build setup-frontend setup-backend \
-		@echo "Running setup for frontend..." \
-		@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml run --rm setup-frontend \
-		@echo "Running setup for backend..." \
-		@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.setup.yml run --rm setup-backend \
-	fi
-	@echo "Setup complete!"
-
-# Build all components in Docker
-build: ensure-network
-	@echo "Building all components in Docker..."
-	@$(DOCKER_COMPOSE) build --no-cache
-	@echo "Build complete!"
-
-# Deploy to production using Docker
-deploy: ensure-network
-	@echo "Deploying to production using Docker..."
-	@echo "Stopping any running services..."
-	@$(DOCKER_COMPOSE) down
-	@echo "Starting production services..."
-	@COMPOSE_PROFILES=production $(DOCKER_COMPOSE) up -d
-	@echo "Deployment complete!"
-
-# Run tests with optional component
-test:
-	@echo "Running tests..."
-	@if [ "$(TEST_ARGS)" = "frontend" ]; then \
-		$(MAKE) -C frontend test; \
+		@echo "Running $(TEST_ARGS) tests..."; \
+		$(MAKE) -C $(TEST_ARGS) test; \
 	fi
 
-	@if [ "$(TEST_ARGS)" = "backend" ]; then \
-		$(MAKE) -C backend test; \
-	fi
-
-#----------------------------------------------
-# Helper targets
-#----------------------------------------------
-
-# Ensure docker network exists
-ensure-network:
-	@docker network inspect $(NETWORK_NAME) >/dev/null 2>&1 || docker network create $(NETWORK_NAME)
-
-# Help command
 help:
-	@echo "Valorant Map Picker - Simplified Docker Commands:"
+	@echo "Valorant Map Picker - Docker Management Commands:"
 	@echo ""
-	@echo "  make setup         - Setup project in Docker containers"
-	@echo "  make build         - Build all components in Docker"
-	@echo "  make deploy        - Deploy to production using Docker"
-	@echo "  make test          - Run all tests in Docker containers"
-	@echo "  make test-coverage - Run tests with detailed coverage reports"
-	@echo "  make benchmark-test - Run benchmark tests"
-	@echo "  make view-coverage - View generated coverage reports"
+	@echo "  make setup         - Initialize project setup (network, Traefik, credentials)"
+	@echo "  make deploy        - Deploy services to production"
+	@echo "  make test          - Run tests (all or specific component)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make deploy backend    - Deploy only backend service"
+	@echo "  make deploy frontend   - Deploy only frontend service"
+	@echo "  make deploy            - Deploy all services"
+	@echo "  make test backend      - Run backend tests only"
+	@echo "  make test frontend     - Run frontend tests only"
+	@echo "  make test              - Run all tests"
 	@echo ""

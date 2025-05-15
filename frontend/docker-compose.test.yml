@@ -1,28 +1,14 @@
 services:
   test:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: node:18-alpine
     volumes:
-      - ./test-results:/app/test-results
+      - .:/app
+    working_dir: /app
     environment:
       - CI=true
       - TEST_TYPE=unit
-
-  test-coverage:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    volumes:
-      - ./coverage:/app/coverage
-    environment:
-      - CI=true
-      - TEST_TYPE=coverage
-
-  test-perf:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    environment:
-      - CI=true
-      - TEST_TYPE=perf
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        npm install --legacy-peer-deps &&
+        make test-all
